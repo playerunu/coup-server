@@ -1,8 +1,8 @@
-package main
+package models
 
 type Player struct {
-	id    string
-	name  string
+	id    string `json:id`
+	name  string `json:name`
 	cards [2]Card
-	coins int
+	coins int `json:coins`
 }

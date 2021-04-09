@@ -1,5 +1,9 @@
 package ws
 
+import (
+	"coup-server/models"
+)
+
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
 type Hub struct {
@@ -14,14 +18,17 @@ type Hub struct {
 
 	// Unregister requests from clients.
 	unregister chan *Client
+
+	game models.Game
 }
 
-func NewHub() *Hub {
+func NewHub(game models.Game) *Hub {
 	return &Hub{
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
+		clients:    make(map[*Client]bool),		
+		game:		game,
 	}
 }
 
