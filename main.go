@@ -2,7 +2,6 @@ package main
 
 import (
 	"coup-server/ws"
-	"coup-server/models"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,12 +9,12 @@ import (
 
 const WS_SERVER_PORT = 10002
 
-func initWsRoutes(game models.Game) {
-	hub := ws.NewHub(game)
-	go hub.Run()
+func initWsRoutes() {
+	gameServer := ws.NewGameServer()
+	go gameServer.Run()
 
 	http.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
-		ws.ServeWs(hub, writer, request)
+		ws.OnWsConnect(gameServer, writer, request)
 	})
 
 	err := http.ListenAndServe(":"+fmt.Sprintf("%d", WS_SERVER_PORT), nil)
@@ -26,6 +25,5 @@ func initWsRoutes(game models.Game) {
 
 func main() {
 	fmt.Println("Starting server")
-	game := models.NewGame()
-	initWsRoutes(game)
+	initWsRoutes()
 }
