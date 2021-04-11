@@ -1,7 +1,7 @@
 package core
 
 import (
-	"coup-server/models"
+	models "coup-server/model"
 	"encoding/json"
 	"fmt"
 	"log"
