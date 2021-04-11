@@ -60,12 +60,22 @@ func (engine *GameEngine) onPlayerJoin(message GameMessage) {
 	engine.game.Players = append(engine.game.Players, player)
 
 	if len(engine.game.Players) >= 2 {
-		var gameStartMsg = GameMessage{MessageType: GameStarted}
-		b, err := json.Marshal(gameStartMsg)
+
+		gameJson, err := json.Marshal(engine.game)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		*engine.globalBroadcastChannel <- b
+		var gameStartMsg = GameMessage{
+			MessageType: GameStarted,
+			Data:        gameJson,
+		}
+
+		broadcastMessage, err := json.Marshal(gameStartMsg)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		*engine.globalBroadcastChannel <- broadcastMessage
 	}
 }
