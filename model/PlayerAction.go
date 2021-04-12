@@ -1,7 +1,7 @@
 package models
 
 type PlayerAction struct {
-	action          Action
-	vsPlayer        Player
-	counterActrions []PlayerCounterAction
+	Action         Action                `json:"action"`
+	VsPlayer       Player                `json:"vsPlayer"`
+	CounterActions []PlayerCounterAction `json:"counterActions"`
 }

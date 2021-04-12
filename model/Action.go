@@ -12,14 +12,18 @@ const (
 )
 
 type Action struct {
-	actionType       ActionType
-	hasCounterAction bool
+	ActionType       ActionType `json:"actionType"`
+	HasCounterAction bool       `json:"hasCounterAction"`
 }
 
-func newAction(actionType ActionType) *Action {
-	action := Action{actionType: actionType, hasCounterAction: true}
+func NewAction(actionType ActionType) *Action {
+	action := Action{
+		ActionType:       actionType,
+		HasCounterAction: true,
+	}
+
 	if actionType == TakeOneCoin {
-		action.hasCounterAction = false
+		action.HasCounterAction = false
 	}
 
 	return &action

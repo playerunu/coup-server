@@ -66,8 +66,7 @@ func (client *Client) runReader() {
 			break
 		}
 		fmt.Println(string(message))
-		// message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		client.gameServer.gameEngine.SendMessage(message)
+		client.gameServer.gameEngine.OnClientMessage(message)
 	}
 }
 

@@ -8,6 +8,6 @@ const (
 )
 
 type CounterAction struct {
-	counterActionType CounterActionType
-	hasCounterAction  bool
+	CounterActionType CounterActionType `json:"counterActionType"`
+	HasCounterAction  bool              `json:"hasCounterAction"`
 }

@@ -1,8 +1,8 @@
 package models
 
 type PlayerCounterAction struct {
-	counterActionType   CounterActionType
-	player              Player
-	vsPlayer            Player
-	pretendingInfluence Influence
+	CounterActionType   CounterActionType `json:"counterActionType"`
+	Player              Player            `json:"player"`
+	VsPlayer            Player            `json:"vsPlayer"`
+	PretendingInfluence Influence         `json:"pretendingInfluence"`
 }

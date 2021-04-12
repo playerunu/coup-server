@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"math/rand"
 	"time"
 )
@@ -21,21 +22,34 @@ type Card struct {
 	isRevealed bool
 }
 
-func newCard(influence Influence) Card {
-	card := Card{
+func (card *Card) MarshalJSON() ([]byte, error) {
+	marshalledCard := struct {
+		Influence  Influence `json:"influence,omitempty"`
+		IsRevealed bool      `json:"isRevealed"`
+	}{
+		IsRevealed: card.isRevealed,
+	}
+
+	if card.isRevealed {
+		marshalledCard.Influence = card.influence
+	}
+
+	return json.Marshal(marshalledCard)
+}
+
+func newCard(influence Influence) *Card {
+	return &Card{
 		influence:  influence,
 		isRevealed: false,
 	}
-
-	return card
 }
 
-func newDeck() []Card {
+func NewDeck() []Card {
 	deck := []Card{}
 
 	for influence := Influence(0); influence < Influence(length); influence++ {
 		for i := 0; i < 3; i++ {
-			deck = append(deck, newCard(influence))
+			deck = append(deck, *newCard(influence))
 		}
 	}
 

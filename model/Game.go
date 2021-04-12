@@ -1,17 +1,21 @@
 package models
 
+var TOTAL_COINS int = 50
+
 type Game struct {
-	Players       []Player
-	CurrentPlayer Player
-	Deck          []Card
-	PlayerActions []PlayerAction
+	Players       []Player       `json:"players"`
+	CurrentPlayer Player         `json:"currentPlayer"`
+	TableCoins    int            `json:"tableCoins"`
+	PlayerActions []PlayerAction `json:"playerActions"`
+	deck          []Card
 }
 
 func NewGame() *Game {
 	game := &Game{
 		Players:       []Player{},
-		Deck:          newDeck(),
+		deck:          NewDeck(),
 		PlayerActions: []PlayerAction{},
+		TableCoins:    TOTAL_COINS,
 	}
 
 	return game
@@ -20,10 +24,10 @@ func NewGame() *Game {
 func (game *Game) DrawCards(howMany int) []Card {
 	var cards []Card
 	for i := 0; i < howMany; i++ {
-		cards = append(cards, game.Deck[len(game.Deck)-1])
+		cards = append(cards, game.deck[len(game.deck)-1])
 	}
 
-	game.Deck = game.Deck[:len(game.Deck)-howMany-1]
+	game.deck = game.deck[:len(game.deck)-howMany-1]
 
 	return cards
 }
