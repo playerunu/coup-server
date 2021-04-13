@@ -23,8 +23,8 @@ type Card struct {
 }
 
 type MarshalledCard struct {
-	Influence  Influence `json:"influence,omitempty"`
-	IsRevealed bool      `json:"isRevealed"`
+	Influence  string `json:"influence,omitempty"`
+	IsRevealed bool   `json:"isRevealed"`
 }
 
 func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
@@ -33,7 +33,19 @@ func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
 	}
 
 	if card.isRevealed || includeInfluence {
-		marshalledCard.Influence = card.influence
+		switch card.influence {
+		case Duke:
+			marshalledCard.Influence = "Duke"
+		case Captain:
+			marshalledCard.Influence = "Captain"
+		case Assassin:
+			marshalledCard.Influence = "Assassin"
+		case Contessa:
+			marshalledCard.Influence = "Contessa"
+		case Ambassador:
+			marshalledCard.Influence = "Ambassador"
+		}
+
 	}
 
 	return marshalledCard
