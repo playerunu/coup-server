@@ -22,19 +22,25 @@ type Card struct {
 	isRevealed bool
 }
 
-func (card *Card) MarshalJSON() ([]byte, error) {
-	marshalledCard := struct {
-		Influence  Influence `json:"influence,omitempty"`
-		IsRevealed bool      `json:"isRevealed"`
-	}{
+type MarshalledCard struct {
+	Influence  Influence `json:"influence,omitempty"`
+	IsRevealed bool      `json:"isRevealed"`
+}
+
+func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
+	marshalledCard := MarshalledCard{
 		IsRevealed: card.isRevealed,
 	}
 
-	if card.isRevealed {
+	if card.isRevealed || includeInfluence {
 		marshalledCard.Influence = card.influence
 	}
 
-	return json.Marshal(marshalledCard)
+	return marshalledCard
+}
+
+func (card *Card) MarshalJSON() ([]byte, error) {
+	return json.Marshal(card.MarshalCard(false))
 }
 
 func newCard(influence Influence) *Card {

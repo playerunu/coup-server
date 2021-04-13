@@ -1,11 +1,13 @@
 package ws
 
 import (
+	"coup-server/core"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -35,7 +37,8 @@ var upgrader = websocket.Upgrader{
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
-	gameServer *GameServer
+	connectionUuid uuid.UUID
+	gameServer     *GameServer
 
 	// The websocket connection.
 	conn *websocket.Conn
@@ -54,9 +57,11 @@ func (client *Client) runReader() {
 		client.gameServer.unregisterChannel <- client
 		client.conn.Close()
 	}()
+
 	client.conn.SetReadLimit(maxMessageSize)
 	client.conn.SetReadDeadline(time.Now().Add(pongWait))
 	client.conn.SetPongHandler(func(string) error { client.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+
 	for {
 		_, message, err := client.conn.ReadMessage()
 		if err != nil {
@@ -66,7 +71,10 @@ func (client *Client) runReader() {
 			break
 		}
 		fmt.Println(string(message))
-		client.gameServer.gameEngine.OnClientMessage(message)
+		client.gameServer.gameEngine.ReadClientMessage(core.ClientMessage{
+			ClientUuid: client.connectionUuid,
+			Payload:    &message,
+		})
 	}
 }
 
@@ -128,9 +136,10 @@ func OnWsConnect(gameServer *GameServer, w http.ResponseWriter, r *http.Request)
 		return
 	}
 	client := &Client{
-		gameServer:  gameServer,
-		conn:        conn,
-		sendChannel: make(chan []byte, 256),
+		connectionUuid: uuid.New(),
+		gameServer:     gameServer,
+		conn:           conn,
+		sendChannel:    make(chan []byte, 256),
 	}
 	client.gameServer.registerChannel <- client
 

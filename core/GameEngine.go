@@ -3,7 +3,6 @@ package core
 import (
 	models "coup-server/model"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -11,29 +10,30 @@ import (
 
 type GameEngine struct {
 	game                   *models.Game
-	clientUpdatesChannel   chan []byte
+	clientUpdatesChannel   chan ClientMessage
+	clientsPrivateChannel  chan ClientMessage
 	globalBroadcastChannel *chan []byte
 }
 
-func NewGameEngine(globalBroadcastChannel *chan []byte) *GameEngine {
+func NewGameEngine(globalBroadcastChannel *chan []byte, clientsPrivateChannel *chan ClientMessage) *GameEngine {
 	return &GameEngine{
 		game:                   models.NewGame(),
-		clientUpdatesChannel:   make(chan []byte),
+		clientUpdatesChannel:   make(chan ClientMessage),
 		globalBroadcastChannel: globalBroadcastChannel,
+		clientsPrivateChannel:  *clientsPrivateChannel,
 	}
 }
 
 func (engine *GameEngine) Run() {
 	for {
-		rawMessage := <-engine.clientUpdatesChannel
+		clientMessage := <-engine.clientUpdatesChannel
+		rawMessage := *clientMessage.Payload
 
 		var gameMessage GameMessage
 		err := json.Unmarshal(rawMessage, &gameMessage)
 		if err != nil {
 			log.Fatalln("error:", err)
 		}
-
-		fmt.Println(gameMessage.MessageType)
 
 		switch gameMessage.MessageType {
 		case PlayerJoined:
@@ -42,8 +42,12 @@ func (engine *GameEngine) Run() {
 	}
 }
 
-func (engine *GameEngine) OnClientMessage(message []byte) {
+func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
 	engine.clientUpdatesChannel <- message
+}
+
+func (engine *GameEngine) SendClientMessage(player *models.Player, message []byte) {
+
 }
 
 func (engine *GameEngine) GlobalBroadcast(messageType MessageType) {
@@ -52,12 +56,12 @@ func (engine *GameEngine) GlobalBroadcast(messageType MessageType) {
 		log.Fatal(err)
 	}
 
-	var gameStartMsg = GameMessage{
+	var gameMsg = GameMessage{
 		MessageType: messageType,
 		Data:        gameJson,
 	}
 
-	broadcastMessage, err := json.Marshal(gameStartMsg)
+	broadcastMessage, err := json.Marshal(gameMsg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -89,16 +93,53 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	}
 }
 
+// Individually sends to each player its cards influences
+func (engine *GameEngine) sendCardInfluences() {
+
+	for _, player := range engine.game.Players {
+		fullCards := []models.MarshalledCard{}
+		for _, card := range player.Cards {
+			fullCards = append(fullCards, card.MarshalCard(true))
+		}
+
+		fullCardsJson, err := json.Marshal(fullCards)
+		if err != nil {
+			log.Fatalln("error:", err)
+		}
+
+		var gameMsg = GameMessage{
+			MessageType: YourCards,
+			Data:        fullCardsJson,
+		}
+
+		broadcastMessage, err := json.Marshal(gameMsg)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var clientMsg = ClientMessage{
+			ClientUuid: player.GetConnectionUuid(),
+			Payload:    &broadcastMessage,
+		}
+
+		engine.clientsPrivateChannel <- clientMsg
+	}
+}
+
 func (engine *GameEngine) startGame() {
+	// Send each player info about its cards influences
+	engine.sendCardInfluences()
+
 	// Shuffle the players list
 	rand.Seed(time.Now().UnixNano())
 	players := engine.game.Players
 	rand.Shuffle(len(players), func(i, j int) { players[i], players[j] = players[j], players[i] })
+
 	// Assign each player its gamePosition
+	// and set the first player to act
 	for i := 0; i < len(players); i++ {
 		players[i].GamePosition = i
 	}
-	// Set the first player to act
 	engine.game.CurrentPlayer = players[0]
 
 	engine.GlobalBroadcast(GameStarted)

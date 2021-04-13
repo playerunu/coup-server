@@ -8,6 +8,7 @@ type MessageType string
 
 const (
 	PlayerJoined = "PlayerJoined"
+	YourCards    = "YourCards"
 	GameStarted  = "GameStarted"
 )
 
