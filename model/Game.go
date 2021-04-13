@@ -25,9 +25,8 @@ func (game *Game) DrawCards(howMany int) []Card {
 	var cards []Card
 	for i := 0; i < howMany; i++ {
 		cards = append(cards, game.deck[len(game.deck)-1])
+		game.deck = game.deck[:len(game.deck)-1]
 	}
-
-	game.deck = game.deck[:len(game.deck)-howMany-1]
 
 	return cards
 }
