@@ -6,12 +6,14 @@ import (
 	"log"
 	"math/rand"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type GameEngine struct {
 	game                   *models.Game
 	clientUpdatesChannel   chan ClientMessage
-	clientsPrivateChannel  chan ClientMessage
+	clientsPrivateChannel  *chan ClientMessage
 	globalBroadcastChannel *chan []byte
 }
 
@@ -20,7 +22,7 @@ func NewGameEngine(globalBroadcastChannel *chan []byte, clientsPrivateChannel *c
 		game:                   models.NewGame(),
 		clientUpdatesChannel:   make(chan ClientMessage),
 		globalBroadcastChannel: globalBroadcastChannel,
-		clientsPrivateChannel:  *clientsPrivateChannel,
+		clientsPrivateChannel:  clientsPrivateChannel,
 	}
 }
 
@@ -37,7 +39,7 @@ func (engine *GameEngine) Run() {
 
 		switch gameMessage.MessageType {
 		case PlayerJoined:
-			engine.onPlayerJoin(gameMessage)
+			engine.onPlayerJoin(gameMessage, clientMessage.ClientUuid)
 		}
 	}
 }
@@ -69,24 +71,25 @@ func (engine *GameEngine) GlobalBroadcast(messageType MessageType) {
 	*engine.globalBroadcastChannel <- broadcastMessage
 }
 
-func (engine *GameEngine) onPlayerJoin(message GameMessage) {
+func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
 	var player models.Player
 	err := json.Unmarshal(message.Data, &player)
 	if err != nil {
 		log.Fatalln("error:", err)
 	}
+	player.SetConnectoinUuuid(uuid)
 
 	engine.registerPlayer(player)
 }
 
 // Registers a new player
 func (engine *GameEngine) registerPlayer(player models.Player) {
-
-	engine.game.Players = append(engine.game.Players, player)
 	// Draw 2 random cards
 	copy(player.Cards[:], engine.game.DrawCards(2))
 	// Give the initial coins
 	engine.takeCoins(player.Name, 2)
+
+	engine.game.Players = append(engine.game.Players, player)
 
 	if len(engine.game.Players) >= 2 {
 		engine.startGame()
@@ -95,10 +98,12 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 
 // Individually sends to each player its cards influences
 func (engine *GameEngine) sendCardInfluences() {
+	for playerIdx := range engine.game.Players {
+		player := &engine.game.Players[playerIdx]
 
-	for _, player := range engine.game.Players {
 		fullCards := []models.MarshalledCard{}
-		for _, card := range player.Cards {
+		for cardIdx := range player.Cards {
+			card := &player.Cards[cardIdx]
 			fullCards = append(fullCards, card.MarshalCard(true))
 		}
 
@@ -112,17 +117,17 @@ func (engine *GameEngine) sendCardInfluences() {
 			Data:        fullCardsJson,
 		}
 
-		broadcastMessage, err := json.Marshal(gameMsg)
+		gameMessageJson, err := json.Marshal(gameMsg)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		var clientMsg = ClientMessage{
 			ClientUuid: player.GetConnectionUuid(),
-			Payload:    &broadcastMessage,
+			Payload:    &gameMessageJson,
 		}
 
-		engine.clientsPrivateChannel <- clientMsg
+		*engine.clientsPrivateChannel <- clientMsg
 	}
 }
 
