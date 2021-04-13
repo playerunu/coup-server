@@ -14,3 +14,7 @@ type Player struct {
 func (player *Player) GetConnectionUuid() uuid.UUID {
 	return player.connectionUuid
 }
+
+func (player *Player) SetConnectoinUuuid(connectionUuid uuid.UUID) {
+	player.connectionUuid = connectionUuid
+}
