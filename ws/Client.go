@@ -25,11 +25,6 @@ const (
 	maxMessageSize = 512
 )
 
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
-
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -105,13 +100,6 @@ func (client *Client) runWriter() {
 				return
 			}
 			w.Write(message)
-
-			// Add queued chat messages to the current websocket message.
-			n := len(client.sendChannel)
-			for i := 0; i < n; i++ {
-				w.Write(newline)
-				w.Write(<-client.sendChannel)
-			}
 
 			if err := w.Close(); err != nil {
 				return
