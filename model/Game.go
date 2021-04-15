@@ -30,3 +30,7 @@ func (game *Game) DrawCards(howMany int) []Card {
 
 	return cards
 }
+
+func (game *Game) DrawCard() Card {
+	return game.DrawCards(1)[0]
+}

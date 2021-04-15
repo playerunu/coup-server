@@ -85,11 +85,13 @@ func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
 // Registers a new player
 func (engine *GameEngine) registerPlayer(player models.Player) {
 	// Draw 2 random cards
-	copy(player.Cards[:], engine.game.DrawCards(2))
-	// Give the initial coins
-	engine.takeCoins(player.Name, 2)
+	player.Card1 = engine.game.DrawCard()
+	player.Card2 = engine.game.DrawCard()
 
 	engine.game.Players = append(engine.game.Players, player)
+
+	// Give the initial coins
+	engine.takeCoins(player.Name, 2)
 
 	if len(engine.game.Players) >= 2 {
 		engine.startGame()
@@ -101,13 +103,16 @@ func (engine *GameEngine) sendCardInfluences() {
 	for playerIdx := range engine.game.Players {
 		player := &engine.game.Players[playerIdx]
 
-		fullCards := []models.MarshalledCard{}
-		for cardIdx := range player.Cards {
-			card := &player.Cards[cardIdx]
-			fullCards = append(fullCards, card.MarshalCard(true))
-		}
+		fullCard1 := player.Card1.MarshalCard(true)
+		fullCard2 := player.Card2.MarshalCard(true)
 
-		fullCardsJson, err := json.Marshal(fullCards)
+		fullCardsJson, err := json.Marshal(struct {
+			Card1 models.MarshalledCard `json:"card1"`
+			Card2 models.MarshalledCard `json:"card2"`
+		}{
+			Card1: fullCard1,
+			Card2: fullCard2,
+		})
 		if err != nil {
 			log.Fatalln("error:", err)
 		}
@@ -160,6 +165,7 @@ func (engine *GameEngine) takeCoins(playerName string, coinsAmount int) {
 		if player.Name == playerName {
 			player.Coins += coinsAmount
 			engine.game.TableCoins -= coinsAmount
+			return
 		}
 	}
 }
