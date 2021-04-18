@@ -8,7 +8,7 @@ type Player struct {
 	Card1          Card   `json:"card1"`
 	Card2          Card   `json:"card2"`
 	Coins          int    `json:"coins"`
-	GamePosition   int    `json:"gamePostion"`
+	GamePosition   int    `json:"gamePosition"`
 	connectionUuid uuid.UUID
 }
 
