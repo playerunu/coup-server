@@ -40,7 +40,10 @@ func (engine *GameEngine) Run() {
 		switch gameMessage.MessageType {
 		case PlayerJoined:
 			engine.onPlayerJoin(gameMessage, clientMessage.ClientUuid)
+		case HeroPlayerAction:
+			engine.onPlayerAction(gameMessage, clientMessage.ClientUuid)
 		}
+
 	}
 }
 
@@ -80,6 +83,13 @@ func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
 	player.SetConnectoinUuuid(uuid)
 
 	engine.registerPlayer(player)
+}
+
+func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
+	var action models.PlayerAction
+	json.Unmarshal(message.Data, &action)
+	engine.game.CurrentPlayerAction = action
+	engine.GlobalBroadcast(PlayerAction)
 }
 
 // Registers a new player

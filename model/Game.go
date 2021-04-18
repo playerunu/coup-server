@@ -3,11 +3,12 @@ package models
 var TOTAL_COINS int = 50
 
 type Game struct {
-	Players       []Player       `json:"players"`
-	CurrentPlayer Player         `json:"currentPlayer"`
-	TableCoins    int            `json:"tableCoins"`
-	PlayerActions []PlayerAction `json:"playerActions"`
-	deck          []Card
+	Players             []Player       `json:"players"`
+	CurrentPlayer       Player         `json:"currentPlayer"`
+	CurrentPlayerAction PlayerAction   `json:"currentPlayerAction"`
+	TableCoins          int            `json:"tableCoins"`
+	PlayerActions       []PlayerAction `json:"playerActions"`
+	deck                []Card
 }
 
 func NewGame() *Game {
