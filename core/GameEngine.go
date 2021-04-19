@@ -51,10 +51,6 @@ func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
 	engine.clientUpdatesChannel <- message
 }
 
-func (engine *GameEngine) SendClientMessage(player *models.Player, message []byte) {
-
-}
-
 func (engine *GameEngine) GlobalBroadcast(messageType MessageType) {
 	gameJson, err := json.Marshal(engine.game)
 	if err != nil {
@@ -86,9 +82,24 @@ func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
 }
 
 func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
-	var action models.PlayerAction
-	json.Unmarshal(message.Data, &action)
-	engine.game.CurrentPlayerAction = action
+	var playerAction models.PlayerAction
+	err := json.Unmarshal(message.Data, &playerAction)
+	if err != nil {
+		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
+	}
+
+	game := engine.game
+
+	switch playerAction.Action.ActionType {
+	case models.TakeOneCoin:
+		engine.takeCoins(game.CurrentPlayer.Name, 1)
+	case models.TakeTwoCoins:
+		engine.takeCoins(game.CurrentPlayer.Name, 1)
+	case models.TakeThreeCoins:
+		engine.takeCoins(game.CurrentPlayer.Name, 3)
+	}
+
+	engine.game.CurrentPlayerAction = &playerAction
 	engine.GlobalBroadcast(PlayerAction)
 }
 
