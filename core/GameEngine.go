@@ -11,7 +11,7 @@ import (
 )
 
 type GameEngine struct {
-	game                   *models.Game
+	Game                   *models.Game
 	clientUpdatesChannel   chan ClientMessage
 	clientsPrivateChannel  *chan ClientMessage
 	globalBroadcastChannel *chan []byte
@@ -19,7 +19,7 @@ type GameEngine struct {
 
 func NewGameEngine(globalBroadcastChannel *chan []byte, clientsPrivateChannel *chan ClientMessage) *GameEngine {
 	return &GameEngine{
-		game:                   models.NewGame(),
+		Game:                   models.NewGame(),
 		clientUpdatesChannel:   make(chan ClientMessage),
 		globalBroadcastChannel: globalBroadcastChannel,
 		clientsPrivateChannel:  clientsPrivateChannel,
@@ -52,7 +52,7 @@ func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
 }
 
 func (engine *GameEngine) GlobalBroadcast(messageType MessageType) {
-	gameJson, err := json.Marshal(engine.game)
+	gameJson, err := json.Marshal(engine.Game)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
 		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
 	}
 
-	game := engine.game
+	game := engine.Game
 
 	switch playerAction.Action.ActionType {
 	case models.TakeOneCoin:
@@ -99,30 +99,30 @@ func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
 		engine.takeCoins(game.CurrentPlayer.Name, 3)
 	}
 
-	engine.game.CurrentPlayerAction = &playerAction
+	engine.Game.CurrentPlayerAction = &playerAction
 	engine.GlobalBroadcast(PlayerAction)
 }
 
 // Registers a new player
 func (engine *GameEngine) registerPlayer(player models.Player) {
 	// Draw 2 random cards
-	player.Card1 = engine.game.DrawCard()
-	player.Card2 = engine.game.DrawCard()
+	player.Card1 = engine.Game.DrawCard()
+	player.Card2 = engine.Game.DrawCard()
 
-	engine.game.Players = append(engine.game.Players, player)
+	engine.Game.Players = append(engine.Game.Players, player)
 
 	// Give the initial coins
 	engine.takeCoins(player.Name, 2)
 
-	if len(engine.game.Players) >= 2 {
+	if len(engine.Game.Players) >= 2 {
 		engine.startGame()
 	}
 }
 
 // Individually sends to each player its cards influences
 func (engine *GameEngine) sendCardInfluences() {
-	for playerIdx := range engine.game.Players {
-		player := &engine.game.Players[playerIdx]
+	for playerIdx := range engine.Game.Players {
+		player := &engine.Game.Players[playerIdx]
 
 		fullCard1 := player.Card1.MarshalCard(true)
 		fullCard2 := player.Card2.MarshalCard(true)
@@ -163,7 +163,7 @@ func (engine *GameEngine) startGame() {
 
 	// Shuffle the players list
 	rand.Seed(time.Now().UnixNano())
-	players := engine.game.Players
+	players := engine.Game.Players
 	rand.Shuffle(len(players), func(i, j int) { players[i], players[j] = players[j], players[i] })
 
 	// Assign each player its gamePosition
@@ -171,21 +171,21 @@ func (engine *GameEngine) startGame() {
 	for i := 0; i < len(players); i++ {
 		players[i].GamePosition = i
 	}
-	engine.game.CurrentPlayer = players[0]
+	engine.Game.CurrentPlayer = players[0]
 
 	engine.GlobalBroadcast(GameStarted)
 }
 
 func (engine *GameEngine) takeCoins(playerName string, coinsAmount int) {
-	if engine.game.TableCoins < coinsAmount {
+	if engine.Game.TableCoins < coinsAmount {
 		log.Fatal("Not enough coins on the table")
 	}
 
-	for i := 0; i < len(engine.game.Players); i++ {
-		player := &engine.game.Players[i]
+	for i := 0; i < len(engine.Game.Players); i++ {
+		player := &engine.Game.Players[i]
 		if player.Name == playerName {
 			player.Coins += coinsAmount
-			engine.game.TableCoins -= coinsAmount
+			engine.Game.TableCoins -= coinsAmount
 			return
 		}
 	}
