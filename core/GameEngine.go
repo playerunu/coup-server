@@ -10,6 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
+const MAX_PLAYERS = 4
+const INITIAL_COINS_COUNT = 2
+
 type GameEngine struct {
 	Game                   *models.Game
 	clientUpdatesChannel   chan ClientMessage
@@ -112,9 +115,9 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	engine.Game.Players = append(engine.Game.Players, player)
 
 	// Give the initial coins
-	engine.takeCoins(player.Name, 2)
+	engine.takeCoins(player.Name, INITIAL_COINS_COUNT)
 
-	if len(engine.Game.Players) >= 2 {
+	if len(engine.Game.Players) >= MAX_PLAYERS {
 		engine.startGame()
 	}
 }
