@@ -7,14 +7,17 @@ import (
 type MessageType string
 
 const (
-	// Client messages
-	HeroPlayerAction = "HeroPlayerAction"
-
-	// Server messages
-	PlayerJoined = "PlayerJoined"
-	GameStarted  = "GameStarted"
-	YourCards    = "YourCards"
-	PlayerAction = "PlayerAction"
+	PlayerJoined           = "PlayerJoined"
+	GameStarted            = "GameStarted"
+	YourCards              = "YourCards"
+	Action                 = "Action"
+	ChallengeAction        = "CurrentActionChallenge"
+	ChallenegeActionResult = "ChallengeActionResult"
+	Block                  = "BlockAction"
+	ChallengeBlock         = "ChallengeBlock"
+	ChallengeBlockResult   = "ChallengeBlockResult"
+	RevealCard             = "RevealCard"
+	NextPlayer             = "NextPlayer"
 )
 
 type GameMessage struct {

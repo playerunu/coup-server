@@ -1,5 +1,10 @@
 package models
 
+import (
+	"math/rand"
+	"time"
+)
+
 var TOTAL_COINS int = 50
 
 type Game struct {
@@ -20,6 +25,8 @@ func NewGame() *Game {
 		CurrentPlayerAction: nil,
 	}
 
+	game.shuffleDeck()
+
 	return game
 }
 
@@ -35,4 +42,20 @@ func (game *Game) DrawCards(howMany int) []Card {
 
 func (game *Game) DrawCard() Card {
 	return game.DrawCards(1)[0]
+}
+
+func (game *Game) InsertAndDraw(card Card) Card {
+	game.deck = append(game.deck, card)
+	game.shuffleDeck()
+
+	return game.DrawCard()
+
+}
+
+func (game *Game) shuffleDeck() {
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(game.deck), func(i, j int) {
+		game.deck[i], game.deck[j] = game.deck[j], game.deck[i]
+	})
+
 }

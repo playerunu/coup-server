@@ -2,8 +2,6 @@ package models
 
 import (
 	"encoding/json"
-	"math/rand"
-	"time"
 )
 
 type Influence int
@@ -55,6 +53,10 @@ func (card *Card) MarshalJSON() ([]byte, error) {
 	return json.Marshal(card.MarshalCard(false))
 }
 
+func (card *Card) GetInfluence() Influence {
+	return card.influence
+}
+
 func newCard(influence Influence) *Card {
 	return &Card{
 		influence:  influence,
@@ -70,9 +72,6 @@ func NewDeck() []Card {
 			deck = append(deck, *newCard(influence))
 		}
 	}
-
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
 
 	return deck
 }

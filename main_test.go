@@ -44,6 +44,8 @@ func registerPlayer(playerName string, engine *core.GameEngine) {
 	})
 }
 
+//func sendPlayerAction(playerName string,
+
 func TestNewGame(t *testing.T) {
 	var playerNames = []string{"SerifIntergalactic", "NuSuntBot", "Capetanos", "DucuBertzi"}
 
@@ -73,5 +75,9 @@ func TestNewGame(t *testing.T) {
 				t.Errorf("Wrong intial coins count. Expected : %d; Actual : %d", core.INITIAL_COINS_COUNT, player.Coins)
 			}
 		}
+	})
+
+	t.Run("Player actions", func(t *testing.T) {
+
 	})
 }

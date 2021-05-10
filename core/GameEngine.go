@@ -10,11 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
-const MAX_PLAYERS = 4
+const MAX_PLAYERS = 2
 const INITIAL_COINS_COUNT = 2
 
 type GameEngine struct {
 	Game                   *models.Game
+	waitingCountersTimer   *time.Timer
 	clientUpdatesChannel   chan ClientMessage
 	clientsPrivateChannel  *chan ClientMessage
 	globalBroadcastChannel *chan []byte
@@ -43,10 +44,15 @@ func (engine *GameEngine) Run() {
 		switch gameMessage.MessageType {
 		case PlayerJoined:
 			engine.onPlayerJoin(gameMessage, clientMessage.ClientUuid)
-		case HeroPlayerAction:
+		case Action:
 			engine.onPlayerAction(gameMessage, clientMessage.ClientUuid)
+		case ChallengeAction:
+		case Block:
+		case ChallengeBlock:
+			engine.onPlayerCounter(gameMessage, clientMessage.ClientUuid)
+		case RevealCard:
+			//engine.onCardReveal(gameMessage, clientMessage.ClientUuid)
 		}
-
 	}
 }
 
@@ -97,13 +103,53 @@ func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
 	case models.TakeOneCoin:
 		engine.takeCoins(game.CurrentPlayer.Name, 1)
 	case models.TakeTwoCoins:
-		engine.takeCoins(game.CurrentPlayer.Name, 1)
+		engine.takeCoins(game.CurrentPlayer.Name, 2)
 	case models.TakeThreeCoins:
 		engine.takeCoins(game.CurrentPlayer.Name, 3)
+	case models.Assasinate:
+	case models.Steal:
+	case models.Exchange:
+		// Those actions will only be broadcasted
+		break
 	}
 
 	engine.Game.CurrentPlayerAction = &playerAction
-	engine.GlobalBroadcast(PlayerAction)
+	engine.GlobalBroadcast(Action)
+
+	if playerAction.Action.HasCounterAction {
+		engine.waitForCounters()
+	} else {
+		engine.nextPlayer()
+	}
+}
+
+func (engine *GameEngine) onPlayerCounter(message GameMessage, uuid uuid.UUID) {
+	// Always make sure we first stop the waiting counters timer
+	engine.waitingCountersTimer.Stop()
+
+	var playerAction models.PlayerAction
+	err := json.Unmarshal(message.Data, &playerAction)
+	if err != nil {
+		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
+	}
+
+	switch message.MessageType {
+	case ChallengeAction:
+	case ChallengeBlock:
+		engine.solveChallenge(message.MessageType)
+	case Block:
+		// Block counter only gets broadcasted
+		break
+	}
+
+	engine.Game.CurrentPlayerAction = &playerAction
+	engine.GlobalBroadcast(message.MessageType)
+
+	// Restart the waiting counters timer only when blocking
+	// For challenges, we restart the counter after the card is revealed
+	if message.MessageType == Block {
+		engine.waitForCounters()
+	}
 }
 
 // Registers a new player
@@ -125,39 +171,41 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 // Individually sends to each player its cards influences
 func (engine *GameEngine) sendCardInfluences() {
 	for playerIdx := range engine.Game.Players {
-		player := &engine.Game.Players[playerIdx]
-
-		fullCard1 := player.Card1.MarshalCard(true)
-		fullCard2 := player.Card2.MarshalCard(true)
-
-		fullCardsJson, err := json.Marshal(struct {
-			Card1 models.MarshalledCard `json:"card1"`
-			Card2 models.MarshalledCard `json:"card2"`
-		}{
-			Card1: fullCard1,
-			Card2: fullCard2,
-		})
-		if err != nil {
-			log.Fatalln("error:", err)
-		}
-
-		var gameMsg = GameMessage{
-			MessageType: YourCards,
-			Data:        fullCardsJson,
-		}
-
-		gameMessageJson, err := json.Marshal(gameMsg)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		var clientMsg = ClientMessage{
-			ClientUuid: player.GetConnectionUuid(),
-			Payload:    &gameMessageJson,
-		}
-
-		*engine.clientsPrivateChannel <- clientMsg
+		engine.sendPlayerCardInfluences(&engine.Game.Players[playerIdx])
 	}
+}
+
+func (engine *GameEngine) sendPlayerCardInfluences(player *models.Player) {
+	fullCard1 := player.Card1.MarshalCard(true)
+	fullCard2 := player.Card2.MarshalCard(true)
+
+	fullCardsJson, err := json.Marshal(struct {
+		Card1 models.MarshalledCard `json:"card1"`
+		Card2 models.MarshalledCard `json:"card2"`
+	}{
+		Card1: fullCard1,
+		Card2: fullCard2,
+	})
+	if err != nil {
+		log.Fatalln("error:", err)
+	}
+
+	var gameMsg = GameMessage{
+		MessageType: YourCards,
+		Data:        fullCardsJson,
+	}
+
+	gameMessageJson, err := json.Marshal(gameMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var clientMsg = ClientMessage{
+		ClientUuid: player.GetConnectionUuid(),
+		Payload:    &gameMessageJson,
+	}
+
+	*engine.clientsPrivateChannel <- clientMsg
 }
 
 func (engine *GameEngine) startGame() {
@@ -191,5 +239,72 @@ func (engine *GameEngine) takeCoins(playerName string, coinsAmount int) {
 			engine.Game.TableCoins -= coinsAmount
 			return
 		}
+	}
+}
+
+func (engine *GameEngine) waitForCounters() {
+	engine.waitingCountersTimer = time.AfterFunc(4*time.Second, func() {
+		engine.nextPlayer()
+	})
+}
+
+func (engine *GameEngine) nextPlayer() {
+	currentPosition := engine.Game.CurrentPlayer.GamePosition
+	numPlayers := len(engine.Game.Players)
+
+	currentPosition = (currentPosition + 1) % numPlayers
+	engine.Game.CurrentPlayer = engine.Game.Players[currentPosition]
+
+	engine.GlobalBroadcast(NextPlayer)
+}
+
+func (engine *GameEngine) solveChallenge(challengeType MessageType) {
+	var challenged *models.Player
+	var pretendingInfluence models.Influence
+	var challengeSuccess bool
+
+	game := engine.Game
+
+	if challengeType == ChallengeAction {
+		challenged = &game.CurrentPlayer
+
+		switch game.CurrentPlayerAction.Action.ActionType {
+		case models.TakeThreeCoins:
+			pretendingInfluence = models.Duke
+		case models.Exchange:
+			pretendingInfluence = models.Ambassador
+		case models.Steal:
+			pretendingInfluence = models.Captain
+		case models.Assasinate:
+			pretendingInfluence = models.Assassin
+		}
+	} else if challengeType == ChallengeBlock {
+		challenged = game.CurrentPlayerAction.BlockAction.Player
+		pretendingInfluence = *game.CurrentPlayerAction.BlockAction.PretendingInfluence
+	}
+
+	// Check if the challenged player really has the pretending card
+	if challenged.Card1.GetInfluence() == pretendingInfluence {
+		challengeSuccess = false
+		challenged.Card1 = game.InsertAndDraw(challenged.Card1)
+	}
+	if challenged.Card2.GetInfluence() == pretendingInfluence {
+		challengeSuccess = false
+		challenged.Card2 = game.InsertAndDraw(challenged.Card2)
+	}
+
+	// Send the challenged players its new card
+	if !challengeSuccess {
+		engine.sendPlayerCardInfluences(challenged)
+	}
+
+	// Update and broadcast the challenge result
+	if challengeType == ChallengeAction {
+		game.CurrentPlayerAction.ChallengeSuccess = &challengeSuccess
+		engine.GlobalBroadcast(ChallenegeActionResult)
+	}
+	if challengeType == ChallengeBlock {
+		game.CurrentPlayerAction.BlockAction.ChallengeSuccess = &challengeSuccess
+		engine.GlobalBroadcast(ChallengeBlockResult)
 	}
 }
