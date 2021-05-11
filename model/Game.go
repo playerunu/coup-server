@@ -8,11 +8,10 @@ import (
 var TOTAL_COINS int = 50
 
 type Game struct {
-	Players             []Player       `json:"players"`
-	CurrentPlayer       Player         `json:"currentPlayer"`
-	CurrentPlayerAction *PlayerAction  `json:"currentPlayerAction,omitempty"`
-	TableCoins          int            `json:"tableCoins"`
-	PlayerActions       []PlayerAction `json:"playerActions"`
+	Players             []Player      `json:"players"`
+	CurrentPlayer       *Player       `json:"currentPlayer"`
+	CurrentPlayerAction *PlayerAction `json:"currentPlayerAction,omitempty"`
+	TableCoins          int           `json:"tableCoins"`
 	deck                []Card
 }
 
@@ -20,7 +19,6 @@ func NewGame() *Game {
 	game := &Game{
 		Players:             []Player{},
 		deck:                NewDeck(),
-		PlayerActions:       []PlayerAction{},
 		TableCoins:          TOTAL_COINS,
 		CurrentPlayerAction: nil,
 	}

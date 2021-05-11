@@ -85,21 +85,23 @@ func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
 	if err != nil {
 		log.Fatalln("error:", err)
 	}
-	player.SetConnectoinUuuid(uuid)
+	player.SetConnectionUuid(uuid)
 
 	engine.registerPlayer(player)
 }
 
 func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
-	var playerAction models.PlayerAction
-	err := json.Unmarshal(message.Data, &playerAction)
+	var clientAction models.PlayerAction
+	err := json.Unmarshal(message.Data, &clientAction)
 	if err != nil {
 		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
 	}
 
 	game := engine.Game
+	var playerAction models.PlayerAction
+	playerAction.Action = *models.NewAction(clientAction.Action.ActionType)
 
-	switch playerAction.Action.ActionType {
+	switch clientAction.Action.ActionType {
 	case models.TakeOneCoin:
 		engine.takeCoins(game.CurrentPlayer.Name, 1)
 	case models.TakeTwoCoins:
@@ -108,8 +110,9 @@ func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
 		engine.takeCoins(game.CurrentPlayer.Name, 3)
 	case models.Assasinate:
 	case models.Steal:
+		playerAction.VsPlayer = clientAction.VsPlayer
 	case models.Exchange:
-		// Those actions will only be broadcasted
+		// This action will only be broadcasted
 		break
 	}
 
@@ -127,22 +130,28 @@ func (engine *GameEngine) onPlayerCounter(message GameMessage, uuid uuid.UUID) {
 	// Always make sure we first stop the waiting counters timer
 	engine.waitingCountersTimer.Stop()
 
-	var playerAction models.PlayerAction
-	err := json.Unmarshal(message.Data, &playerAction)
+	var clientAction models.PlayerAction
+	err := json.Unmarshal(message.Data, &clientAction)
 	if err != nil {
 		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
 	}
 
+	currentAction := engine.Game.CurrentPlayerAction
+
 	switch message.MessageType {
 	case ChallengeAction:
+		currentAction.ChallengedBy = clientAction.ChallengedBy
+		engine.solveChallenge(message.MessageType)
 	case ChallengeBlock:
+		currentAction.BlockAction.ChallengedBy = clientAction.BlockAction.Player
 		engine.solveChallenge(message.MessageType)
 	case Block:
-		// Block counter only gets broadcasted
-		break
+		currentAction.BlockAction = &models.Block{
+			Player:              clientAction.BlockAction.Player,
+			PretendingInfluence: clientAction.BlockAction.PretendingInfluence,
+		}
 	}
 
-	engine.Game.CurrentPlayerAction = &playerAction
 	engine.GlobalBroadcast(message.MessageType)
 
 	// Restart the waiting counters timer only when blocking
@@ -163,7 +172,7 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	// Give the initial coins
 	engine.takeCoins(player.Name, INITIAL_COINS_COUNT)
 
-	if len(engine.Game.Players) >= MAX_PLAYERS {
+	if len(engine.Game.Players) == MAX_PLAYERS {
 		engine.startGame()
 	}
 }
@@ -222,7 +231,7 @@ func (engine *GameEngine) startGame() {
 	for i := 0; i < len(players); i++ {
 		players[i].GamePosition = i
 	}
-	engine.Game.CurrentPlayer = players[0]
+	engine.Game.CurrentPlayer = &players[0]
 
 	engine.GlobalBroadcast(GameStarted)
 }
@@ -244,16 +253,20 @@ func (engine *GameEngine) takeCoins(playerName string, coinsAmount int) {
 
 func (engine *GameEngine) waitForCounters() {
 	engine.waitingCountersTimer = time.AfterFunc(4*time.Second, func() {
+		// TODO special case for exchange
 		engine.nextPlayer()
 	})
 }
 
 func (engine *GameEngine) nextPlayer() {
+	// TODO Finalize the current action result
+
+	// Calculate the next player position
 	currentPosition := engine.Game.CurrentPlayer.GamePosition
 	numPlayers := len(engine.Game.Players)
 
 	currentPosition = (currentPosition + 1) % numPlayers
-	engine.Game.CurrentPlayer = engine.Game.Players[currentPosition]
+	engine.Game.CurrentPlayer = &engine.Game.Players[currentPosition]
 
 	engine.GlobalBroadcast(NextPlayer)
 }
@@ -266,7 +279,7 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	game := engine.Game
 
 	if challengeType == ChallengeAction {
-		challenged = &game.CurrentPlayer
+		challenged = game.CurrentPlayer
 
 		switch game.CurrentPlayerAction.Action.ActionType {
 		case models.TakeThreeCoins:
@@ -302,9 +315,19 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	if challengeType == ChallengeAction {
 		game.CurrentPlayerAction.ChallengeSuccess = &challengeSuccess
 		engine.GlobalBroadcast(ChallenegeActionResult)
+
+		if engine.Game.CurrentPlayerAction.Action.ActionType == models.Steal ||
+			// The current action can still be challenged
+			engine.Game.CurrentPlayerAction.Action.ActionType == models.Assasinate {
+			engine.waitForCounters()
+		} else {
+			engine.nextPlayer()
+		}
 	}
 	if challengeType == ChallengeBlock {
 		game.CurrentPlayerAction.BlockAction.ChallengeSuccess = &challengeSuccess
 		engine.GlobalBroadcast(ChallengeBlockResult)
+		// The current action cannnot be challenged anymore
+		engine.nextPlayer()
 	}
 }

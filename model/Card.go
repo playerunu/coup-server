@@ -57,6 +57,10 @@ func (card *Card) GetInfluence() Influence {
 	return card.influence
 }
 
+func (card *Card) IsRevealed() bool {
+	return card.isRevealed
+}
+
 func newCard(influence Influence) *Card {
 	return &Card{
 		influence:  influence,

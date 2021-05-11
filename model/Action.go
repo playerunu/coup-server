@@ -9,6 +9,7 @@ const (
 	Exchange
 	Assasinate
 	Steal
+	Coup
 )
 
 type Action struct {
