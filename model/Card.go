@@ -17,7 +17,7 @@ const (
 
 type Card struct {
 	influence  Influence
-	isRevealed bool
+	IsRevealed bool
 }
 
 type MarshalledCard struct {
@@ -27,10 +27,10 @@ type MarshalledCard struct {
 
 func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
 	marshalledCard := MarshalledCard{
-		IsRevealed: card.isRevealed,
+		IsRevealed: card.IsRevealed,
 	}
 
-	if card.isRevealed || includeInfluence {
+	if card.IsRevealed || includeInfluence {
 		switch card.influence {
 		case Duke:
 			marshalledCard.Influence = "Duke"
@@ -43,7 +43,6 @@ func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
 		case Ambassador:
 			marshalledCard.Influence = "Ambassador"
 		}
-
 	}
 
 	return marshalledCard
@@ -57,14 +56,14 @@ func (card *Card) GetInfluence() Influence {
 	return card.influence
 }
 
-func (card *Card) IsRevealed() bool {
-	return card.isRevealed
+func (card *Card) Reveal() {
+	card.IsRevealed = true
 }
 
 func newCard(influence Influence) *Card {
 	return &Card{
 		influence:  influence,
-		isRevealed: false,
+		IsRevealed: false,
 	}
 }
 

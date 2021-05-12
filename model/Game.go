@@ -6,21 +6,24 @@ import (
 )
 
 var TOTAL_COINS int = 50
+var ASSASSINATE_COINS_AMOUNT int = 3
+var COUP_COINS_AMOUNT int = 7
+var STEAL_COINS_AMOUNT int = 2
 
 type Game struct {
-	Players             []Player      `json:"players"`
-	CurrentPlayer       *Player       `json:"currentPlayer"`
-	CurrentPlayerAction *PlayerAction `json:"currentPlayerAction,omitempty"`
-	TableCoins          int           `json:"tableCoins"`
-	deck                []Card
+	Players       []Player    `json:"players"`
+	CurrentPlayer *Player     `json:"currentPlayer"`
+	CurrentMove   *PlayerMove `json:"currentPlayerAction,omitempty"`
+	TableCoins    int         `json:"tableCoins"`
+	deck          []Card
 }
 
 func NewGame() *Game {
 	game := &Game{
-		Players:             []Player{},
-		deck:                NewDeck(),
-		TableCoins:          TOTAL_COINS,
-		CurrentPlayerAction: nil,
+		Players:     []Player{},
+		deck:        NewDeck(),
+		TableCoins:  TOTAL_COINS,
+		CurrentMove: nil,
 	}
 
 	game.shuffleDeck()
@@ -47,7 +50,17 @@ func (game *Game) InsertAndDraw(card Card) Card {
 	game.shuffleDeck()
 
 	return game.DrawCard()
+}
 
+func (game *Game) GetPlayerByName(playerName string) *Player {
+	for index := range game.Players {
+		player := &game.Players[index]
+		if player.Name == playerName {
+			return player
+		}
+	}
+
+	return nil
 }
 
 func (game *Game) shuffleDeck() {
@@ -55,5 +68,4 @@ func (game *Game) shuffleDeck() {
 	rand.Shuffle(len(game.deck), func(i, j int) {
 		game.deck[i], game.deck[j] = game.deck[j], game.deck[i]
 	})
-
 }

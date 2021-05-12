@@ -12,6 +12,7 @@ import (
 
 const MAX_PLAYERS = 2
 const INITIAL_COINS_COUNT = 2
+const WAITING_COUNTERS_SECONDS = 3
 
 type GameEngine struct {
 	Game                   *models.Game
@@ -45,13 +46,13 @@ func (engine *GameEngine) Run() {
 		case PlayerJoined:
 			engine.onPlayerJoin(gameMessage, clientMessage.ClientUuid)
 		case Action:
-			engine.onPlayerAction(gameMessage, clientMessage.ClientUuid)
+			engine.onPlayerMove(gameMessage, clientMessage.ClientUuid)
 		case ChallengeAction:
 		case Block:
 		case ChallengeBlock:
 			engine.onPlayerCounter(gameMessage, clientMessage.ClientUuid)
 		case RevealCard:
-			//engine.onCardReveal(gameMessage, clientMessage.ClientUuid)
+			engine.onCardReveal(gameMessage, clientMessage.ClientUuid)
 		}
 	}
 }
@@ -60,7 +61,7 @@ func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
 	engine.clientUpdatesChannel <- message
 }
 
-func (engine *GameEngine) GlobalBroadcast(messageType MessageType) {
+func (engine *GameEngine) Broadcast(messageType MessageType) {
 	gameJson, err := json.Marshal(engine.Game)
 	if err != nil {
 		log.Fatal(err)
@@ -83,31 +84,31 @@ func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
 	var player models.Player
 	err := json.Unmarshal(message.Data, &player)
 	if err != nil {
-		log.Fatalln("error:", err)
+		log.Fatalln("Error while unmarshalling player join message:", err)
 	}
 	player.SetConnectionUuid(uuid)
 
 	engine.registerPlayer(player)
 }
 
-func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
-	var clientAction models.PlayerAction
+func (engine *GameEngine) onPlayerMove(message GameMessage, uuid uuid.UUID) {
+	var clientAction models.PlayerMove
 	err := json.Unmarshal(message.Data, &clientAction)
 	if err != nil {
 		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
 	}
 
 	game := engine.Game
-	var playerAction models.PlayerAction
+	var playerAction models.PlayerMove
 	playerAction.Action = *models.NewAction(clientAction.Action.ActionType)
 
 	switch clientAction.Action.ActionType {
 	case models.TakeOneCoin:
-		engine.takeCoins(game.CurrentPlayer.Name, 1)
+		engine.getCoinsFromTable(game.CurrentPlayer, 1)
 	case models.TakeTwoCoins:
-		engine.takeCoins(game.CurrentPlayer.Name, 2)
+		engine.getCoinsFromTable(game.CurrentPlayer, 2)
 	case models.TakeThreeCoins:
-		engine.takeCoins(game.CurrentPlayer.Name, 3)
+		engine.getCoinsFromTable(game.CurrentPlayer, 3)
 	case models.Assasinate:
 	case models.Steal:
 		playerAction.VsPlayer = clientAction.VsPlayer
@@ -116,13 +117,13 @@ func (engine *GameEngine) onPlayerAction(message GameMessage, uuid uuid.UUID) {
 		break
 	}
 
-	engine.Game.CurrentPlayerAction = &playerAction
-	engine.GlobalBroadcast(Action)
+	engine.Game.CurrentMove = &playerAction
+	engine.Broadcast(Action)
 
-	if playerAction.Action.HasCounterAction {
+	if playerAction.CanCounter() {
 		engine.waitForCounters()
 	} else {
-		engine.nextPlayer()
+		engine.finishCurrentMove()
 	}
 }
 
@@ -130,34 +131,73 @@ func (engine *GameEngine) onPlayerCounter(message GameMessage, uuid uuid.UUID) {
 	// Always make sure we first stop the waiting counters timer
 	engine.waitingCountersTimer.Stop()
 
-	var clientAction models.PlayerAction
+	var clientAction models.PlayerMove
 	err := json.Unmarshal(message.Data, &clientAction)
 	if err != nil {
 		log.Fatalln("Error while unmarshalling game message: ", message.MessageType, err)
 	}
 
-	currentAction := engine.Game.CurrentPlayerAction
+	currentMove := engine.Game.CurrentMove
 
 	switch message.MessageType {
 	case ChallengeAction:
-		currentAction.ChallengedBy = clientAction.ChallengedBy
+		currentMove.Challenge = &models.Challenge{
+			ChallengedBy:  clientAction.Challenge.ChallengedBy,
+			WaitingReveal: true,
+		}
 		engine.solveChallenge(message.MessageType)
 	case ChallengeBlock:
-		currentAction.BlockAction.ChallengedBy = clientAction.BlockAction.Player
+		currentMove.Block.Challenge = &models.Challenge{
+			ChallengedBy:  clientAction.Block.Challenge.ChallengedBy,
+			WaitingReveal: true,
+		}
 		engine.solveChallenge(message.MessageType)
 	case Block:
-		currentAction.BlockAction = &models.Block{
-			Player:              clientAction.BlockAction.Player,
-			PretendingInfluence: clientAction.BlockAction.PretendingInfluence,
+		currentMove.Block = &models.Block{
+			Player:              clientAction.Block.Player,
+			PretendingInfluence: clientAction.Block.PretendingInfluence,
 		}
 	}
 
-	engine.GlobalBroadcast(message.MessageType)
+	engine.Broadcast(message.MessageType)
 
 	// Restart the waiting counters timer only when blocking
 	// For challenges, we restart the counter after the card is revealed
 	if message.MessageType == Block {
 		engine.waitForCounters()
+	}
+}
+
+func (engine *GameEngine) onCardReveal(message GameMessage, uuid uuid.UUID) {
+	var playerUpdate models.Player
+	err := json.Unmarshal(message.Data, &playerUpdate)
+	if err != nil {
+		log.Fatalln("Error while unmarshalling card reveal message:", err)
+	}
+
+	player := engine.Game.GetPlayerByName(playerUpdate.Name)
+	if playerUpdate.Card1.IsRevealed {
+		player.Card1.Reveal()
+	}
+	if playerUpdate.Card2.IsRevealed {
+		player.Card2.Reveal()
+	}
+
+	currentMove := engine.Game.CurrentMove
+	if currentMove.WaitingReveal != nil {
+		*currentMove.WaitingReveal = false
+	} else if currentMove.Challenge != nil && currentMove.Challenge.WaitingReveal {
+		currentMove.Challenge.WaitingReveal = false
+	} else if currentMove.Block.Challenge != nil && currentMove.Block.Challenge.WaitingReveal {
+		currentMove.Block.Challenge.WaitingReveal = false
+	}
+
+	engine.Broadcast(message.MessageType)
+
+	if engine.Game.CurrentMove.CanCounter() {
+		engine.waitForCounters()
+	} else {
+		engine.finishCurrentMove()
 	}
 }
 
@@ -167,10 +207,10 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	player.Card1 = engine.Game.DrawCard()
 	player.Card2 = engine.Game.DrawCard()
 
-	engine.Game.Players = append(engine.Game.Players, player)
-
 	// Give the initial coins
-	engine.takeCoins(player.Name, INITIAL_COINS_COUNT)
+	engine.getCoinsFromTable(&player, INITIAL_COINS_COUNT)
+
+	engine.Game.Players = append(engine.Game.Players, player)
 
 	if len(engine.Game.Players) == MAX_PLAYERS {
 		engine.startGame()
@@ -233,101 +273,152 @@ func (engine *GameEngine) startGame() {
 	}
 	engine.Game.CurrentPlayer = &players[0]
 
-	engine.GlobalBroadcast(GameStarted)
+	engine.Broadcast(GameStarted)
 }
 
-func (engine *GameEngine) takeCoins(playerName string, coinsAmount int) {
+func (engine *GameEngine) getCoinsFromTable(player *models.Player, coinsAmount int) {
 	if engine.Game.TableCoins < coinsAmount {
 		log.Fatal("Not enough coins on the table")
 	}
 
-	for i := 0; i < len(engine.Game.Players); i++ {
-		player := &engine.Game.Players[i]
-		if player.Name == playerName {
-			player.Coins += coinsAmount
-			engine.Game.TableCoins -= coinsAmount
-			return
-		}
-	}
+	player.Coins += coinsAmount
+	engine.Game.TableCoins -= coinsAmount
+}
+
+func (engine *GameEngine) putCoinsOnTable(player *models.Player, coinsAmount int) {
+	player.Coins -= coinsAmount
+	engine.Game.TableCoins += coinsAmount
 }
 
 func (engine *GameEngine) waitForCounters() {
-	engine.waitingCountersTimer = time.AfterFunc(4*time.Second, func() {
-		// TODO special case for exchange
-		engine.nextPlayer()
+	engine.waitingCountersTimer = time.AfterFunc(WAITING_COUNTERS_SECONDS*time.Second, func() {
+		engine.finishCurrentMove()
 	})
 }
 
-func (engine *GameEngine) nextPlayer() {
-	// TODO Finalize the current action result
+func (engine *GameEngine) finishCurrentMove() {
+	currentMove := engine.Game.CurrentMove
+	currentPlayer := engine.Game.CurrentPlayer
+	vsPlayer := engine.Game.CurrentMove.VsPlayer
+	waitingReveal := false
+	waitingExchange := false
 
+	// Finalize the current action result
+	if currentMove.IsSuccessful() {
+		switch currentMove.Action.ActionType {
+		case models.Assasinate:
+			if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
+				engine.putCoinsOnTable(currentPlayer, models.ASSASSINATE_COINS_AMOUNT)
+				waitingReveal = true
+				currentMove.WaitingReveal = &waitingReveal
+			}
+		case models.Coup:
+			engine.putCoinsOnTable(currentPlayer, models.COUP_COINS_AMOUNT)
+		case models.Steal:
+			if vsPlayer.Coins >= 2 {
+				currentPlayer.Coins += 2
+				vsPlayer.Coins -= 2
+			} else {
+				currentPlayer.Coins = vsPlayer.Coins
+				vsPlayer.Coins = 0
+			}
+		case models.Exchange:
+			if currentMove.WaitingExchange == nil || !*currentMove.WaitingExchange {
+				waitingExchange = true
+				currentMove.WaitingExchange = &waitingExchange
+			}
+		}
+	} else {
+		// Some actions need to rollback when they are blocked/challenged
+		switch currentMove.Action.ActionType {
+		case models.TakeTwoCoins:
+			engine.putCoinsOnTable(currentPlayer, 2)
+		case models.TakeThreeCoins:
+			engine.putCoinsOnTable(currentPlayer, 3)
+		case models.Assasinate:
+			engine.getCoinsFromTable(currentPlayer, 3)
+		}
+	}
+
+	engine.Broadcast(ActionResult)
+	// We still have to wait for the assassinate/coup/exchange to happen before moving on
+	if !waitingExchange && !waitingReveal {
+		engine.nextPlayer()
+	}
+}
+
+func (engine *GameEngine) nextPlayer() {
 	// Calculate the next player position
 	currentPosition := engine.Game.CurrentPlayer.GamePosition
 	numPlayers := len(engine.Game.Players)
 
 	currentPosition = (currentPosition + 1) % numPlayers
 	engine.Game.CurrentPlayer = &engine.Game.Players[currentPosition]
+	engine.Game.CurrentMove = nil
 
-	engine.GlobalBroadcast(NextPlayer)
+	engine.Broadcast(NextPlayer)
 }
 
 func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	var challenged *models.Player
-	var pretendingInfluence models.Influence
-	var challengeSuccess bool
+	var challenger *models.Player
+	var challenge *models.Challenge
+	var pretendingInfluence *models.Influence
+	var success bool
 
 	game := engine.Game
+	currentMove := game.CurrentMove
 
 	if challengeType == ChallengeAction {
 		challenged = game.CurrentPlayer
-
-		switch game.CurrentPlayerAction.Action.ActionType {
-		case models.TakeThreeCoins:
-			pretendingInfluence = models.Duke
-		case models.Exchange:
-			pretendingInfluence = models.Ambassador
-		case models.Steal:
-			pretendingInfluence = models.Captain
-		case models.Assasinate:
-			pretendingInfluence = models.Assassin
-		}
+		challenger = currentMove.Challenge.ChallengedBy
+		challenge = currentMove.Challenge
+		pretendingInfluence = currentMove.Action.GetInfluence()
 	} else if challengeType == ChallengeBlock {
-		challenged = game.CurrentPlayerAction.BlockAction.Player
-		pretendingInfluence = *game.CurrentPlayerAction.BlockAction.PretendingInfluence
+		challenged = currentMove.Block.Player
+		challenger = currentMove.Block.Challenge.ChallengedBy
+		challenge = currentMove.Block.Challenge
+		pretendingInfluence = currentMove.Block.PretendingInfluence
 	}
 
 	// Check if the challenged player really has the pretending card
-	if challenged.Card1.GetInfluence() == pretendingInfluence {
-		challengeSuccess = false
+	if challenged.Card1.GetInfluence() == *pretendingInfluence {
+		success = false
 		challenged.Card1 = game.InsertAndDraw(challenged.Card1)
-	}
-	if challenged.Card2.GetInfluence() == pretendingInfluence {
-		challengeSuccess = false
+	} else if challenged.Card2.GetInfluence() == *pretendingInfluence {
+		success = false
 		challenged.Card2 = game.InsertAndDraw(challenged.Card2)
+	} else {
+		success = true
 	}
 
-	// Send the challenged players its new card
-	if !challengeSuccess {
+	if success {
+		// Challenge won, challenged player should reveal a card
+		if challenged.RemainingCards() == 1 {
+			challenged.RevealLastCard()
+		}
+	} else {
+		// Challenge lost, challenger player should reveal a card
+		if challenger.RemainingCards() == 1 {
+			challenger.RevealLastCard()
+		}
+
+		// Send the challenged players its new card
 		engine.sendPlayerCardInfluences(challenged)
 	}
 
-	// Update and broadcast the challenge result
+	// Broadcast the challenge result
+	challenge.Success = &success
 	if challengeType == ChallengeAction {
-		game.CurrentPlayerAction.ChallengeSuccess = &challengeSuccess
-		engine.GlobalBroadcast(ChallenegeActionResult)
-
-		if engine.Game.CurrentPlayerAction.Action.ActionType == models.Steal ||
-			// The current action can still be challenged
-			engine.Game.CurrentPlayerAction.Action.ActionType == models.Assasinate {
-			engine.waitForCounters()
-		} else {
-			engine.nextPlayer()
-		}
+		engine.Broadcast(ChallenegeActionResult)
+	} else if challengeType == ChallengeBlock {
+		engine.Broadcast(ChallengeBlockResult)
 	}
-	if challengeType == ChallengeBlock {
-		game.CurrentPlayerAction.BlockAction.ChallengeSuccess = &challengeSuccess
-		engine.GlobalBroadcast(ChallengeBlockResult)
-		// The current action cannnot be challenged anymore
-		engine.nextPlayer()
+
+	// If the action can still be countered, wait for the card reveal first,
+	// then start the waitCounter timer, otherwise
+	// move to next player
+	if !challenge.WaitingReveal && !currentMove.CanCounter() {
+		engine.finishCurrentMove()
 	}
 }

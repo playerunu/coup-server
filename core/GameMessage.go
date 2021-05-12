@@ -18,6 +18,7 @@ const (
 	ChallengeBlock         = "ChallengeBlock"
 	ChallengeBlockResult   = "ChallengeBlockResult"
 	RevealCard             = "RevealCard"
+	ActionResult           = "ActionResult"
 	NextPlayer             = "NextPlayer"
 )
 
