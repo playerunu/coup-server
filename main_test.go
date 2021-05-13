@@ -5,28 +5,39 @@ import (
 	models "coup-server/model"
 	"encoding/json"
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-func newTestEngine() *core.GameEngine {
+var players = []models.Player{
+	{
+		Name: "SerifIntergalactic",
+	},
+	{
+		Name: "NuSuntBot",
+	},
+	{
+		Name: "Capetanos",
+	},
+	{
+		Name: "DucuBertzi",
+	},
+}
+
+var engine *core.GameEngine
+var broadcast chan []byte
+var clientUpdates chan core.ClientMessage
+var firstPlayer *models.Player
+var secondPlayer *models.Player
+
+func newTestEngine() (*core.GameEngine, chan []byte, chan core.ClientMessage) {
 	broadCastChannel := make(chan []byte)
 	clientsPrivateChannel := make(chan core.ClientMessage)
 
-	go func() {
-		for {
-			select {
-			case message := <-broadCastChannel:
-				_ = message
-			case message := <-clientsPrivateChannel:
-				_ = message
-			}
-		}
-	}()
-
-	return core.NewGameEngine(&broadCastChannel, &clientsPrivateChannel)
+	return core.NewGameEngine(&broadCastChannel, &clientsPrivateChannel), broadCastChannel, clientsPrivateChannel
 }
 
 func registerPlayer(player models.Player, engine *core.GameEngine) {
@@ -55,10 +66,16 @@ func registerPlayer(player models.Player, engine *core.GameEngine) {
 		ClientUuid: player.GetConnectionUuid(),
 		Payload:    &payload,
 	})
+
+	time.Sleep(100 * time.Millisecond)
+	if len(engine.Game.Players) == core.MAX_PLAYERS {
+		// Game start message
+		<-broadcast
+	}
 }
 
-func sendPlayerAction(player models.Player, messageType core.MessageType, playerAction models.PlayerMove, engine *core.GameEngine) {
-	data, _ := json.Marshal(playerAction)
+func sendPlayerMove(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
+	data, _ := json.Marshal(playerMove)
 
 	payload, _ := json.Marshal(core.GameMessage{
 		MessageType: messageType,
@@ -69,14 +86,46 @@ func sendPlayerAction(player models.Player, messageType core.MessageType, player
 		ClientUuid: player.GetConnectionUuid(),
 		Payload:    &payload,
 	})
-
-	time.Sleep(200 * time.Millisecond)
 }
 
-func sendRandomCardReveal(player models.Player, engine *core.GameEngine) {
-	if !player.Card1.IsRevealed {
+func sendActionWaitReveal(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
+	sendPlayerMove(player, messageType, playerMove)
+	// Action message
+	<-broadcast
+	// Action result message
+	<-broadcast
+}
+
+func sendActionNoCounter(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
+	sendPlayerMove(player, messageType, playerMove)
+	// Action message
+	<-broadcast
+	// Action result message
+	<-broadcast
+	// Next player OR Game over message
+	<-broadcast
+}
+
+func sendAction(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
+	sendPlayerMove(player, messageType, playerMove)
+	// Action message
+	<-broadcast
+}
+
+func sendReveal(player models.Player, cardType core.CardType) {
+	if cardType == core.AnyUnrevealed {
+		if !player.Card1.IsRevealed {
+			cardType = core.Card1
+		} else if !player.Card2.IsRevealed {
+			cardType = core.Card2
+		} else {
+			log.Fatal("Both player cards are revealed and we are supposed to find one unrevealed card")
+		}
+	}
+
+	if cardType == core.Card1 {
 		player.Card1.Reveal()
-	} else if !player.Card2.IsRevealed {
+	} else {
 		player.Card2.Reveal()
 	}
 
@@ -92,45 +141,44 @@ func sendRandomCardReveal(player models.Player, engine *core.GameEngine) {
 		Payload:    &payload,
 	})
 
-	time.Sleep(200 * time.Millisecond)
+	// Reveal card
+	<-broadcast
+	// Next player
+	<-broadcast
 }
 
-func getNextPlayer(engine *core.GameEngine) *models.Player {
+func getNextPlayer() *models.Player {
 	return &engine.Game.Players[(engine.Game.CurrentPlayer.GamePosition+1)%core.MAX_PLAYERS]
 }
 
-func TestGame(t *testing.T) {
-	var players = []models.Player{
-		{
-			Name: "SerifIntergalactic",
-		},
-		{
-			Name: "NuSuntBot",
-		},
-		{
-			Name: "Capetanos",
-		},
-		{
-			Name: "DucuBertzi",
-		},
-	}
+func initTest() {
+	engine, broadcast, clientUpdates = newTestEngine()
+	go func() {
+		for {
+			<-clientUpdates
+		}
+	}()
 
-	engine := newTestEngine()
 	go engine.Run()
 
+	for index := 0; index < core.MAX_PLAYERS; index++ {
+		registerPlayer(players[index], engine)
+	}
+
+	firstPlayer = engine.Game.CurrentPlayer
+	secondPlayer = getNextPlayer()
+}
+
+func TestMultipleRounds(t *testing.T) {
+	initTest()
+
 	t.Run("Initial game state", func(t *testing.T) {
-		if engine.Game.TableCoins != models.TOTAL_COINS {
+		if engine.Game.TableCoins != models.TOTAL_COINS-core.MAX_PLAYERS*core.INITIAL_COINS_COUNT {
 			t.Errorf("Wrong intial table coins count. Expected : %d; Actual : %d", models.TOTAL_COINS, engine.Game.TableCoins)
 		}
 	})
 
 	t.Run("Register players", func(t *testing.T) {
-		for index := 0; index < core.MAX_PLAYERS; index++ {
-			registerPlayer(players[index], engine)
-		}
-
-		time.Sleep(1 * time.Second)
-
 		if len(engine.Game.Players) != core.MAX_PLAYERS {
 			t.Errorf("Wrong players count. Expected : %d; Actual : %d", core.MAX_PLAYERS, len(engine.Game.Players))
 		}
@@ -142,14 +190,11 @@ func TestGame(t *testing.T) {
 		}
 	})
 
-	firstPlayer := engine.Game.CurrentPlayer
-	secondPlayer := getNextPlayer(engine)
-
 	t.Run("[Round 1] First player - TakeOneCoin", func(t *testing.T) {
-		playerAction := models.PlayerMove{
+		playerMove := models.PlayerMove{
 			Action: *models.NewAction(models.TakeOneCoin),
 		}
-		sendPlayerAction(*firstPlayer, core.Action, playerAction, engine)
+		sendActionNoCounter(*firstPlayer, core.Action, playerMove)
 
 		if engine.Game.TableCoins != models.TOTAL_COINS-core.INITIAL_COINS_COUNT*core.MAX_PLAYERS-1 {
 			t.Errorf("Wrong table coins after taking one coin. Expected : %d; Actual : %d",
@@ -168,7 +213,7 @@ func TestGame(t *testing.T) {
 		playerMove := models.PlayerMove{
 			Action: *models.NewAction(models.TakeTwoCoins),
 		}
-		sendPlayerAction(*secondPlayer, core.Action, playerMove, engine)
+		sendAction(*secondPlayer, core.Action, playerMove)
 
 		if secondPlayer.Coins != 4 {
 			t.Errorf("Wrong player coins after taking two coins. Expected : 4; Actual : %d", secondPlayer.Coins)
@@ -183,7 +228,7 @@ func TestGame(t *testing.T) {
 			PretendingInfluence: &influence,
 		}
 
-		sendPlayerAction(*firstPlayer, core.Block, *playerMove, engine)
+		sendAction(*firstPlayer, core.Block, *playerMove)
 	})
 
 	t.Run("[Round 2] Second player - Challenges Block with Duke", func(t *testing.T) {
@@ -193,7 +238,7 @@ func TestGame(t *testing.T) {
 		}
 
 		hasDuke := firstPlayer.HasInfluence(models.Duke)
-		sendPlayerAction(*secondPlayer, core.ChallengeBlock, *playerMove, engine)
+		sendActionWaitReveal(*secondPlayer, core.ChallengeBlock, *playerMove)
 
 		if playerMove.Block.Challenge == nil {
 			t.Errorf("Wrong block with duke challenge result. Expected : a Block struct instance; Actual : nil")
@@ -204,13 +249,13 @@ func TestGame(t *testing.T) {
 				t.Error("Wrong block with duke challenge result. Expected : false; Actual : true")
 			}
 
-			sendRandomCardReveal(*firstPlayer, engine)
+			sendReveal(*firstPlayer, core.AnyUnrevealed)
 		} else {
 			if *playerMove.Block.Challenge.Success == false {
 				t.Error("Wrong block with duke challenge result. Expected : true; Actual : false")
 			}
 
-			sendRandomCardReveal(*secondPlayer, engine)
+			sendReveal(*secondPlayer, core.AnyUnrevealed)
 		}
 	})
 
@@ -223,17 +268,17 @@ func TestGame(t *testing.T) {
 			Action:   *models.NewAction(models.Assasinate),
 			VsPlayer: secondPlayer,
 		}
-		sendPlayerAction(*secondPlayer, core.Action, playerMove, engine)
-
-		// Wait and dont challenge the action
-		time.Sleep(4 * time.Second)
+		sendActionWaitReveal(*secondPlayer, core.Action, playerMove)
 
 		remainingCards := secondPlayer.RemainingCards()
-		sendRandomCardReveal(*secondPlayer, engine)
+		sendReveal(*secondPlayer, core.AnyUnrevealed)
 
 		if remainingCards == 1 {
 			if !secondPlayer.IsEliminated() {
 				t.Errorf("Wrong player remaining cards. Expected: 0; Actual: %d", secondPlayer.RemainingCards())
+			}
+			if engine.Game.Winner != firstPlayer {
+				t.Errorf("Wrong game state - it should have a winner")
 			}
 		} else {
 			if secondPlayer.RemainingCards() != 1 {
@@ -241,4 +286,159 @@ func TestGame(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestCoup(t *testing.T) {
+	initTest()
+
+	for i := 0; i < 7; i++ {
+		playerMove := models.PlayerMove{
+			Action: *models.NewAction(models.TakeOneCoin),
+		}
+		sendActionNoCounter(*firstPlayer, core.Action, playerMove)
+		sendActionNoCounter(*secondPlayer, core.Action, playerMove)
+	}
+
+	playerMove := models.PlayerMove{
+		Action:   *models.NewAction(models.Coup),
+		VsPlayer: secondPlayer,
+	}
+
+	sendActionWaitReveal(*firstPlayer, core.Action, playerMove)
+	sendReveal(*secondPlayer, core.AnyUnrevealed)
+
+	if secondPlayer.RemainingCards() != 1 {
+		t.Errorf("Wrong second player remaining cards. Expected : 1; Actual : %d", secondPlayer.RemainingCards())
+	}
+
+	playerMove = models.PlayerMove{
+		Action:   *models.NewAction(models.Coup),
+		VsPlayer: firstPlayer,
+	}
+
+	sendActionWaitReveal(*secondPlayer, core.Action, playerMove)
+	sendReveal(*firstPlayer, core.AnyUnrevealed)
+
+	if firstPlayer.RemainingCards() != 1 {
+		t.Errorf("Wrong second player remaining cards. Expected : 1; Actual : %d", firstPlayer.RemainingCards())
+	}
+
+	for i := 0; i < 7; i++ {
+		playerMove := models.PlayerMove{
+			Action: *models.NewAction(models.TakeOneCoin),
+		}
+		sendActionNoCounter(*firstPlayer, core.Action, playerMove)
+		sendActionNoCounter(*secondPlayer, core.Action, playerMove)
+	}
+
+	playerMove = models.PlayerMove{
+		Action:   *models.NewAction(models.Coup),
+		VsPlayer: secondPlayer,
+	}
+
+	sendActionWaitReveal(*firstPlayer, core.Action, playerMove)
+	sendReveal(*secondPlayer, core.AnyUnrevealed)
+
+	if secondPlayer.RemainingCards() != 0 {
+		t.Errorf("Wrong second player remaining cards. Expected : 0; Actual : %d", secondPlayer.RemainingCards())
+	}
+
+	if engine.Game.Winner != firstPlayer {
+		t.Errorf("Wrong player winner. It should be the first player")
+	}
+}
+
+func TestSteal(t *testing.T) {
+	var playerMove models.PlayerMove
+	initTest()
+
+	core.DrawInfluence(engine, firstPlayer, models.Captain, core.Card1)
+	core.DrawInfluence(engine, firstPlayer, models.Contessa, core.Card2)
+
+	core.DrawInfluence(engine, secondPlayer, models.Ambassador, core.Card1)
+	core.DrawInfluence(engine, secondPlayer, models.Assassin, core.Card2)
+
+	playerMove = *models.NewPlayerMove(models.Steal, secondPlayer)
+	sendActionNoCounter(*firstPlayer, core.Action, playerMove)
+
+	if secondPlayer.Coins != 0 {
+		t.Errorf("Wrong second player coins. Expected : 0; Actual : %d", secondPlayer.Coins)
+	}
+	if engine.Game.CurrentPlayer != secondPlayer {
+		t.Errorf("Wrong current player. Expected : second player")
+	}
+
+	playerMove = *models.NewPlayerMove(models.TakeOneCoin, nil)
+	sendActionNoCounter(*secondPlayer, core.Action, playerMove)
+
+	playerMove = *models.NewPlayerMove(models.Steal, secondPlayer)
+	sendActionNoCounter(*firstPlayer, core.Action, playerMove)
+
+	if secondPlayer.Coins != 0 {
+		t.Errorf("Wrong second player coins. Expected : 0; Actual : %d", secondPlayer.Coins)
+	}
+	if firstPlayer.Coins != 5 {
+		t.Errorf("Wrong first player coins. Expected : 5; Actual : %d", firstPlayer.Coins)
+	}
+
+	playerMove = *models.NewPlayerMove(models.TakeOneCoin, nil)
+	sendActionNoCounter(*secondPlayer, core.Action, playerMove)
+
+	playerMove = *models.NewPlayerMove(models.Steal, secondPlayer)
+	sendAction(*firstPlayer, core.Action, playerMove)
+
+	playerMove = *engine.Game.CurrentMove
+	influence := models.Ambassador
+	playerMove.Block = &models.Block{
+		Player:              secondPlayer,
+		PretendingInfluence: &influence,
+	}
+
+	sendActionNoCounter(*secondPlayer, core.Block, playerMove)
+
+	if secondPlayer.Coins != 1 {
+		t.Errorf("Wrong second player coins. Expected : 1; Actual : %d", secondPlayer.Coins)
+	}
+
+	playerMove = *models.NewPlayerMove(models.TakeOneCoin, nil)
+	sendActionNoCounter(*secondPlayer, core.Action, playerMove)
+
+	playerMove = *models.NewPlayerMove(models.Steal, secondPlayer)
+	sendAction(*firstPlayer, core.Action, playerMove)
+
+	playerMove = *engine.Game.CurrentMove
+	influence = models.Ambassador
+	playerMove.Block = &models.Block{
+		Player:              secondPlayer,
+		PretendingInfluence: &influence,
+	}
+	hasAmbassador := secondPlayer.HasInfluence(models.Ambassador)
+
+	sendAction(*secondPlayer, core.Block, playerMove)
+
+	playerMove = *engine.Game.CurrentMove
+	playerMove.Block.Challenge = &models.Challenge{
+		ChallengedBy: firstPlayer,
+	}
+	sendActionWaitReveal(*firstPlayer, core.ChallengeBlock, playerMove)
+
+	if hasAmbassador {
+		sendReveal(*firstPlayer, core.AnyUnrevealed)
+
+		if firstPlayer.RemainingCards() != 1 {
+			t.Errorf("Wrong remaining cards for first player. Expected : 1; Actual : %d", firstPlayer.RemainingCards())
+		}
+		if secondPlayer.Coins != 2 {
+			t.Errorf("Wrong coins amount for second player. Expected : 2; Actual : %d", secondPlayer.Coins)
+		}
+	} else {
+		sendReveal(*secondPlayer, core.AnyUnrevealed)
+
+		if secondPlayer.RemainingCards() != 1 {
+			t.Errorf("Wrong remaining cards for second player. Expected : 1; Actual : %d", secondPlayer.RemainingCards())
+		}
+		if secondPlayer.Coins != 0 {
+			t.Errorf("Wrong coins amount for second player. Expected : 0; Actual : %d", secondPlayer.Coins)
+		}
+	}
 }
