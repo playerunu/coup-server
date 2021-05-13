@@ -118,7 +118,7 @@ func (engine *GameEngine) onPlayerMove(message GameMessage, uuid uuid.UUID) {
 		engine.getCoinsFromTable(game.CurrentPlayer, 2)
 	case models.TakeThreeCoins:
 		engine.getCoinsFromTable(game.CurrentPlayer, 3)
-	case models.Assasinate, models.Steal:
+	case models.Assasinate, models.Steal, models.Coup:
 		playerAction.VsPlayer = engine.Game.GetPlayerByName(clientAction.VsPlayer.Name)
 	case models.Exchange:
 		// This action will only be broadcasted
@@ -300,14 +300,22 @@ func (engine *GameEngine) finishCurrentMove() {
 		case models.Assasinate:
 			if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
 				engine.putCoinsOnTable(currentPlayer, models.ASSASSINATE_COINS_AMOUNT)
-				waitingReveal = true
-				currentMove.WaitingReveal = &waitingReveal
+				if vsPlayer.RemainingCards() == 1 {
+					engine.revealPlayerCard(vsPlayer, LastUnrevealed)
+				} else {
+					waitingReveal = true
+					currentMove.WaitingReveal = &waitingReveal
+				}
 			}
 		case models.Coup:
 			if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
 				engine.putCoinsOnTable(currentPlayer, models.COUP_COINS_AMOUNT)
-				waitingReveal = true
-				currentMove.WaitingReveal = &waitingReveal
+				if vsPlayer.RemainingCards() == 1 {
+					engine.revealPlayerCard(vsPlayer, LastUnrevealed)
+				} else {
+					waitingReveal = true
+					currentMove.WaitingReveal = &waitingReveal
+				}
 			}
 		case models.Steal:
 			if vsPlayer.Coins >= 2 {

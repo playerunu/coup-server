@@ -337,7 +337,6 @@ func TestCoup(t *testing.T) {
 	}
 
 	sendActionWaitReveal(*firstPlayer, core.Action, playerMove)
-	sendReveal(*secondPlayer, core.AnyUnrevealed)
 
 	if secondPlayer.RemainingCards() != 0 {
 		t.Errorf("Wrong second player remaining cards. Expected : 0; Actual : %d", secondPlayer.RemainingCards())
