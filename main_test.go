@@ -268,10 +268,8 @@ func TestMultipleRounds(t *testing.T) {
 			Action:   *models.NewAction(models.Assasinate),
 			VsPlayer: secondPlayer,
 		}
-		sendActionWaitReveal(*secondPlayer, core.Action, playerMove)
-
 		remainingCards := secondPlayer.RemainingCards()
-		sendReveal(*secondPlayer, core.AnyUnrevealed)
+		sendActionWaitReveal(*secondPlayer, core.Action, playerMove)
 
 		if remainingCards == 1 {
 			if !secondPlayer.IsEliminated() {
@@ -281,6 +279,8 @@ func TestMultipleRounds(t *testing.T) {
 				t.Errorf("Wrong game state - it should have a winner")
 			}
 		} else {
+			sendReveal(*secondPlayer, core.AnyUnrevealed)
+
 			if secondPlayer.RemainingCards() != 1 {
 				t.Errorf("Wrong player remaining cards. Expected: 1; Actual: %d", secondPlayer.RemainingCards())
 			}
