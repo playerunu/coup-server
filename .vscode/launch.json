@@ -5,14 +5,38 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Launch test function",
+            "name": "Test Coup",
             "type": "go",
             "request": "launch",
             "mode": "test",
             "program": "${workspaceFolder}",
             "args": [
                 "-test.run",
-                "TestGame"
+                "TestCoup"
+            ]
+        },
+        {
+            "name": "Test Steal",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}",
+            "args": [
+                "-test.run",
+                "TestSteal"
+            ]
+        },
+
+    
+        {
+            "name": "Test multiple rounds",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}",
+            "args": [
+                "-test.run",
+                "TestMultipleRounds"
             ]
         }
 
