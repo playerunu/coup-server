@@ -9,6 +9,13 @@ type PlayerMove struct {
 	Block           *Block     `json:"blockAction,omitempty"`
 }
 
+func NewPlayerMove(actionType ActionType, vsPlayer *Player) *PlayerMove {
+	return &PlayerMove{
+		Action:   *NewAction(actionType),
+		VsPlayer: vsPlayer,
+	}
+}
+
 func (playerMove *PlayerMove) IsSuccessful() bool {
 	if !playerMove.Action.CanCounter() {
 		return true
@@ -20,12 +27,12 @@ func (playerMove *PlayerMove) IsSuccessful() bool {
 	}
 
 	if playerMove.Block != nil {
-		if playerMove.Block.Challenge.ChallengedBy == nil {
+		if playerMove.Block.Challenge == nil {
 			// The action was blocked and nobody challenged it
 			return false
 		} else {
-			// The block action was challenged, check the block action result
-			return !*playerMove.Block.Challenge.Success
+			// The block action was challenged, check the challenge block action result
+			return *playerMove.Block.Challenge.Success
 		}
 	}
 
@@ -55,4 +62,16 @@ func (playerMove *PlayerMove) CanCounter() bool {
 
 	// This should never be reached
 	return false
+}
+
+func (playerMove *PlayerMove) IsWaitingMoveReveal() bool {
+	return playerMove.WaitingReveal != nil && *playerMove.WaitingReveal
+}
+
+func (playerMove *PlayerMove) IsWaitingChallengeReveal() bool {
+	return playerMove.Challenge != nil && playerMove.Challenge.IsWaitingReveal()
+}
+
+func (playerMove *PlayerMove) IsWaitingBlockReveal() bool {
+	return playerMove.Block != nil && playerMove.Block.IsWaitingReveal()
 }

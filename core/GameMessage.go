@@ -20,6 +20,7 @@ const (
 	RevealCard             = "RevealCard"
 	ActionResult           = "ActionResult"
 	NextPlayer             = "NextPlayer"
+	GameOver               = "GameOver"
 )
 
 type GameMessage struct {

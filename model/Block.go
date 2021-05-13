@@ -5,3 +5,7 @@ type Block struct {
 	PretendingInfluence *Influence `json:"pretendingInfluence"`
 	Challenge           *Challenge `json:"challenge,omitempty"`
 }
+
+func (block *Block) IsWaitingReveal() bool {
+	return block.Challenge != nil && block.Challenge.IsWaitingReveal()
+}

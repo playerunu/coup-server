@@ -3,6 +3,7 @@ package core
 import (
 	models "coup-server/model"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -12,7 +13,16 @@ import (
 
 const MAX_PLAYERS = 2
 const INITIAL_COINS_COUNT = 2
-const WAITING_COUNTERS_SECONDS = 3
+const WAITING_COUNTERS_SECONDS = 1
+
+type CardType int
+
+const (
+	Card1 CardType = iota
+	Card2
+	LastUnrevealed
+	AnyUnrevealed
+)
 
 type GameEngine struct {
 	Game                   *models.Game
@@ -47,9 +57,7 @@ func (engine *GameEngine) Run() {
 			engine.onPlayerJoin(gameMessage, clientMessage.ClientUuid)
 		case Action:
 			engine.onPlayerMove(gameMessage, clientMessage.ClientUuid)
-		case ChallengeAction:
-		case Block:
-		case ChallengeBlock:
+		case ChallengeAction, Block, ChallengeBlock:
 			engine.onPlayerCounter(gameMessage, clientMessage.ClientUuid)
 		case RevealCard:
 			engine.onCardReveal(gameMessage, clientMessage.ClientUuid)
@@ -62,6 +70,7 @@ func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
 }
 
 func (engine *GameEngine) Broadcast(messageType MessageType) {
+	fmt.Printf("Broadcasting %s\n", messageType)
 	gameJson, err := json.Marshal(engine.Game)
 	if err != nil {
 		log.Fatal(err)
@@ -109,9 +118,8 @@ func (engine *GameEngine) onPlayerMove(message GameMessage, uuid uuid.UUID) {
 		engine.getCoinsFromTable(game.CurrentPlayer, 2)
 	case models.TakeThreeCoins:
 		engine.getCoinsFromTable(game.CurrentPlayer, 3)
-	case models.Assasinate:
-	case models.Steal:
-		playerAction.VsPlayer = clientAction.VsPlayer
+	case models.Assasinate, models.Steal:
+		playerAction.VsPlayer = engine.Game.GetPlayerByName(clientAction.VsPlayer.Name)
 	case models.Exchange:
 		// This action will only be broadcasted
 		break
@@ -142,24 +150,23 @@ func (engine *GameEngine) onPlayerCounter(message GameMessage, uuid uuid.UUID) {
 	switch message.MessageType {
 	case ChallengeAction:
 		currentMove.Challenge = &models.Challenge{
-			ChallengedBy:  clientAction.Challenge.ChallengedBy,
-			WaitingReveal: true,
+			ChallengedBy: engine.Game.GetPlayerByName(clientAction.Challenge.ChallengedBy.Name),
 		}
-		engine.solveChallenge(message.MessageType)
 	case ChallengeBlock:
 		currentMove.Block.Challenge = &models.Challenge{
-			ChallengedBy:  clientAction.Block.Challenge.ChallengedBy,
-			WaitingReveal: true,
+			ChallengedBy: engine.Game.GetPlayerByName(clientAction.Block.Challenge.ChallengedBy.Name),
 		}
-		engine.solveChallenge(message.MessageType)
 	case Block:
 		currentMove.Block = &models.Block{
-			Player:              clientAction.Block.Player,
+			Player:              engine.Game.GetPlayerByName(clientAction.Block.Player.Name),
 			PretendingInfluence: clientAction.Block.PretendingInfluence,
 		}
 	}
 
 	engine.Broadcast(message.MessageType)
+	if message.MessageType == ChallengeAction || message.MessageType == ChallengeBlock {
+		engine.solveChallenge(message.MessageType)
+	}
 
 	// Restart the waiting counters timer only when blocking
 	// For challenges, we restart the counter after the card is revealed
@@ -177,27 +184,10 @@ func (engine *GameEngine) onCardReveal(message GameMessage, uuid uuid.UUID) {
 
 	player := engine.Game.GetPlayerByName(playerUpdate.Name)
 	if playerUpdate.Card1.IsRevealed {
-		player.Card1.Reveal()
+		engine.revealPlayerCard(player, Card1)
 	}
 	if playerUpdate.Card2.IsRevealed {
-		player.Card2.Reveal()
-	}
-
-	currentMove := engine.Game.CurrentMove
-	if currentMove.WaitingReveal != nil {
-		*currentMove.WaitingReveal = false
-	} else if currentMove.Challenge != nil && currentMove.Challenge.WaitingReveal {
-		currentMove.Challenge.WaitingReveal = false
-	} else if currentMove.Block.Challenge != nil && currentMove.Block.Challenge.WaitingReveal {
-		currentMove.Block.Challenge.WaitingReveal = false
-	}
-
-	engine.Broadcast(message.MessageType)
-
-	if engine.Game.CurrentMove.CanCounter() {
-		engine.waitForCounters()
-	} else {
-		engine.finishCurrentMove()
+		engine.revealPlayerCard(player, Card2)
 	}
 }
 
@@ -211,6 +201,7 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	engine.getCoinsFromTable(&player, INITIAL_COINS_COUNT)
 
 	engine.Game.Players = append(engine.Game.Players, player)
+	engine.Game.RemainingPlayers += 1
 
 	if len(engine.Game.Players) == MAX_PLAYERS {
 		engine.startGame()
@@ -313,13 +304,17 @@ func (engine *GameEngine) finishCurrentMove() {
 				currentMove.WaitingReveal = &waitingReveal
 			}
 		case models.Coup:
-			engine.putCoinsOnTable(currentPlayer, models.COUP_COINS_AMOUNT)
+			if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
+				engine.putCoinsOnTable(currentPlayer, models.COUP_COINS_AMOUNT)
+				waitingReveal = true
+				currentMove.WaitingReveal = &waitingReveal
+			}
 		case models.Steal:
 			if vsPlayer.Coins >= 2 {
 				currentPlayer.Coins += 2
 				vsPlayer.Coins -= 2
 			} else {
-				currentPlayer.Coins = vsPlayer.Coins
+				currentPlayer.Coins += vsPlayer.Coins
 				vsPlayer.Coins = 0
 			}
 		case models.Exchange:
@@ -335,13 +330,11 @@ func (engine *GameEngine) finishCurrentMove() {
 			engine.putCoinsOnTable(currentPlayer, 2)
 		case models.TakeThreeCoins:
 			engine.putCoinsOnTable(currentPlayer, 3)
-		case models.Assasinate:
-			engine.getCoinsFromTable(currentPlayer, 3)
 		}
 	}
 
 	engine.Broadcast(ActionResult)
-	// We still have to wait for the assassinate/coup/exchange to happen before moving on
+	// We still have to wait for the assassinate/coup reveal or for exchange to happen before moving on
 	if !waitingExchange && !waitingReveal {
 		engine.nextPlayer()
 	}
@@ -384,10 +377,10 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	// Check if the challenged player really has the pretending card
 	if challenged.Card1.GetInfluence() == *pretendingInfluence {
 		success = false
-		challenged.Card1 = game.InsertAndDraw(challenged.Card1)
+		challenged.Card1 = game.InsertCardAndDraw(&challenged.Card1)
 	} else if challenged.Card2.GetInfluence() == *pretendingInfluence {
 		success = false
-		challenged.Card2 = game.InsertAndDraw(challenged.Card2)
+		challenged.Card2 = game.InsertCardAndDraw(&challenged.Card2)
 	} else {
 		success = true
 	}
@@ -395,12 +388,12 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	if success {
 		// Challenge won, challenged player should reveal a card
 		if challenged.RemainingCards() == 1 {
-			challenged.RevealLastCard()
+			engine.revealPlayerCard(challenged, LastUnrevealed)
 		}
 	} else {
 		// Challenge lost, challenger player should reveal a card
 		if challenger.RemainingCards() == 1 {
-			challenger.RevealLastCard()
+			engine.revealPlayerCard(challenger, LastUnrevealed)
 		}
 
 		// Send the challenged players its new card
@@ -415,10 +408,49 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 		engine.Broadcast(ChallengeBlockResult)
 	}
 
-	// If the action can still be countered, wait for the card reveal first,
-	// then start the waitCounter timer, otherwise
-	// move to next player
-	if !challenge.WaitingReveal && !currentMove.CanCounter() {
+	// If the card was not auto-revealed, wait for the card reveal
+	// Also, Assassinate and Steal can still be blocked, so we still need to wait for counters
+	if (challenge.WaitingReveal != nil && !*challenge.WaitingReveal) && !currentMove.CanCounter() {
 		engine.finishCurrentMove()
+	}
+}
+
+func (engine *GameEngine) revealPlayerCard(player *models.Player, card CardType) {
+	switch card {
+	case Card1:
+		player.Card1.Reveal()
+	case Card2:
+		player.Card2.Reveal()
+	case LastUnrevealed:
+		player.RevealLastCard()
+	}
+
+	if player.IsEliminated() {
+		engine.Game.RemainingPlayers -= 1
+		if engine.Game.RemainingPlayers == 1 {
+			// Game Over
+			engine.Game.Winner = engine.Game.GetWinner()
+			engine.Broadcast(GameOver)
+			return
+		}
+	}
+
+	currentMove := engine.Game.CurrentMove
+	if currentMove.IsWaitingMoveReveal() {
+		*currentMove.WaitingReveal = false
+	} else if currentMove.IsWaitingChallengeReveal() {
+		*currentMove.Challenge.WaitingReveal = false
+	} else if currentMove.IsWaitingBlockReveal() {
+		*currentMove.Block.Challenge.WaitingReveal = false
+	}
+
+	engine.Broadcast(RevealCard)
+
+	if engine.Game.CurrentMove.CanCounter() {
+		// Assassinate and steal can still be blocked after
+		// an unsuccessful challenge
+		engine.waitForCounters()
+	} else {
+		engine.nextPlayer()
 	}
 }

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"log"
 	"math/rand"
 	"time"
 )
@@ -11,11 +12,13 @@ var COUP_COINS_AMOUNT int = 7
 var STEAL_COINS_AMOUNT int = 2
 
 type Game struct {
-	Players       []Player    `json:"players"`
-	CurrentPlayer *Player     `json:"currentPlayer"`
-	CurrentMove   *PlayerMove `json:"currentPlayerAction,omitempty"`
-	TableCoins    int         `json:"tableCoins"`
-	deck          []Card
+	Players          []Player    `json:"players"`
+	RemainingPlayers int         `json:"remainingPlayers"`
+	Winner           *Player     `json:"winner:omitempty"`
+	CurrentPlayer    *Player     `json:"currentPlayer"`
+	CurrentMove      *PlayerMove `json:"currentPlayerAction,omitempty"`
+	TableCoins       int         `json:"tableCoins"`
+	deck             []Card
 }
 
 func NewGame() *Game {
@@ -45,8 +48,8 @@ func (game *Game) DrawCard() Card {
 	return game.DrawCards(1)[0]
 }
 
-func (game *Game) InsertAndDraw(card Card) Card {
-	game.deck = append(game.deck, card)
+func (game *Game) InsertCardAndDraw(card *Card) Card {
+	game.deck = append(game.deck, *card)
 	game.shuffleDeck()
 
 	return game.DrawCard()
@@ -60,6 +63,22 @@ func (game *Game) GetPlayerByName(playerName string) *Player {
 		}
 	}
 
+	return nil
+}
+
+func (game *Game) GetWinner() *Player {
+	if game.RemainingPlayers > 1 {
+		return nil
+	}
+
+	for index := range game.Players {
+		player := &game.Players[index]
+		if player.RemainingCards() > 0 {
+			return player
+		}
+	}
+
+	log.Fatal("Invalid game state! There is only one remaining player, but all player have 0 remaining cards")
 	return nil
 }
 
