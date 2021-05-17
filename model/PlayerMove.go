@@ -2,6 +2,7 @@ package models
 
 type PlayerMove struct {
 	Action          Action     `json:"action"`
+	Finished        bool       `json:"finished"`
 	WaitingReveal   *bool      `json:"waitingReveal,omitempty"`
 	WaitingExchange *bool      `json:"waitinExchange,omitempty"`
 	VsPlayer        *Player    `json:"vsPlayer,omitempty"`
@@ -12,6 +13,7 @@ type PlayerMove struct {
 func NewPlayerMove(actionType ActionType, vsPlayer *Player) *PlayerMove {
 	return &PlayerMove{
 		Action:   *NewAction(actionType),
+		Finished: false,
 		VsPlayer: vsPlayer,
 	}
 }
@@ -43,6 +45,10 @@ func (playerMove *PlayerMove) IsSuccessful() bool {
 // can still be countered by a block or a challenge
 func (playerMove *PlayerMove) CanCounter() bool {
 	if !playerMove.Action.CanCounter() {
+		return false
+	}
+
+	if playerMove.Finished {
 		return false
 	}
 

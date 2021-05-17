@@ -172,6 +172,12 @@ func initTest() {
 func TestMultipleRounds(t *testing.T) {
 	initTest()
 
+	core.DrawInfluence(engine, firstPlayer, models.Assassin, core.Card1)
+	core.DrawInfluence(engine, firstPlayer, models.Assassin, core.Card2)
+
+	core.DrawInfluence(engine, secondPlayer, models.Ambassador, core.Card1)
+	core.DrawInfluence(engine, secondPlayer, models.Assassin, core.Card2)
+
 	t.Run("Initial game state", func(t *testing.T) {
 		if engine.Game.TableCoins != models.TOTAL_COINS-core.MAX_PLAYERS*core.INITIAL_COINS_COUNT {
 			t.Errorf("Wrong intial table coins count. Expected : %d; Actual : %d", models.TOTAL_COINS, engine.Game.TableCoins)
@@ -249,13 +255,13 @@ func TestMultipleRounds(t *testing.T) {
 				t.Error("Wrong block with duke challenge result. Expected : false; Actual : true")
 			}
 
-			sendReveal(*firstPlayer, core.AnyUnrevealed)
+			sendReveal(*secondPlayer, core.AnyUnrevealed)
 		} else {
 			if *playerMove.Block.Challenge.Success == false {
 				t.Error("Wrong block with duke challenge result. Expected : true; Actual : false")
 			}
 
-			sendReveal(*secondPlayer, core.AnyUnrevealed)
+			sendReveal(*firstPlayer, core.AnyUnrevealed)
 		}
 	})
 

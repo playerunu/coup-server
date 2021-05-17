@@ -7,9 +7,8 @@ import (
 type MessageType string
 
 const (
-	PlayerJoined = "PlayerJoined"
-	GameStarted  = "GameStarted"
-
+	PlayerJoined           = "PlayerJoined"
+	GameStarted            = "GameStarted"
 	YourCards              = "YourCards"
 	Action                 = "Action"
 	ChallengeAction        = "CurrentActionChallenge"

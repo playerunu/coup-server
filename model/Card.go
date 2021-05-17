@@ -25,6 +25,11 @@ type MarshalledCard struct {
 	IsRevealed bool   `json:"isRevealed"`
 }
 
+type YourCards struct {
+	Card1 MarshalledCard `json:"card1"`
+	Card2 MarshalledCard `json:"card2"`
+}
+
 func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
 	marshalledCard := MarshalledCard{
 		IsRevealed: card.IsRevealed,

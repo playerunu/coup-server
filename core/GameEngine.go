@@ -3,7 +3,6 @@ package core
 import (
 	models "coup-server/model"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -69,8 +68,8 @@ func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
 	engine.clientUpdatesChannel <- message
 }
 
-func (engine *GameEngine) Broadcast(messageType MessageType) {
-	fmt.Printf("Broadcasting %s\n", messageType)
+func (engine *GameEngine) broadcast(messageType MessageType) {
+	//fmt.Printf("Broadcasting %s\n", messageType)
 	gameJson, err := json.Marshal(engine.Game)
 	if err != nil {
 		log.Fatal(err)
@@ -87,6 +86,20 @@ func (engine *GameEngine) Broadcast(messageType MessageType) {
 	}
 
 	*engine.globalBroadcastChannel <- broadcastMessage
+}
+
+func (engine *GameEngine) sendPrivateMessage(gameMessage GameMessage, player *models.Player) {
+	gameMessageJson, err := json.Marshal(gameMessage)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var clientMsg = ClientMessage{
+		ClientUuid: player.GetConnectionUuid(),
+		Payload:    &gameMessageJson,
+	}
+
+	*engine.clientsPrivateChannel <- clientMsg
 }
 
 func (engine *GameEngine) onPlayerJoin(message GameMessage, uuid uuid.UUID) {
@@ -126,7 +139,7 @@ func (engine *GameEngine) onPlayerMove(message GameMessage, uuid uuid.UUID) {
 	}
 
 	engine.Game.CurrentMove = &playerAction
-	engine.Broadcast(Action)
+	engine.broadcast(Action)
 
 	if playerAction.CanCounter() {
 		engine.waitForCounters()
@@ -163,7 +176,7 @@ func (engine *GameEngine) onPlayerCounter(message GameMessage, uuid uuid.UUID) {
 		}
 	}
 
-	engine.Broadcast(message.MessageType)
+	engine.broadcast(message.MessageType)
 	if message.MessageType == ChallengeAction || message.MessageType == ChallengeBlock {
 		engine.solveChallenge(message.MessageType)
 	}
@@ -216,36 +229,20 @@ func (engine *GameEngine) sendCardInfluences() {
 }
 
 func (engine *GameEngine) sendPlayerCardInfluences(player *models.Player) {
-	fullCard1 := player.Card1.MarshalCard(true)
-	fullCard2 := player.Card2.MarshalCard(true)
-
-	fullCardsJson, err := json.Marshal(struct {
-		Card1 models.MarshalledCard `json:"card1"`
-		Card2 models.MarshalledCard `json:"card2"`
-	}{
-		Card1: fullCard1,
-		Card2: fullCard2,
+	fullCardsJson, err := json.Marshal(models.YourCards{
+		Card1: player.Card1.MarshalCard(true),
+		Card2: player.Card2.MarshalCard(true),
 	})
 	if err != nil {
-		log.Fatalln("error:", err)
+		log.Fatalln("Error while marshalling full cards details:", err)
 	}
 
-	var gameMsg = GameMessage{
+	var gameMessage = GameMessage{
 		MessageType: YourCards,
 		Data:        fullCardsJson,
 	}
 
-	gameMessageJson, err := json.Marshal(gameMsg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var clientMsg = ClientMessage{
-		ClientUuid: player.GetConnectionUuid(),
-		Payload:    &gameMessageJson,
-	}
-
-	*engine.clientsPrivateChannel <- clientMsg
+	engine.sendPrivateMessage(gameMessage, player)
 }
 
 func (engine *GameEngine) startGame() {
@@ -264,7 +261,7 @@ func (engine *GameEngine) startGame() {
 	}
 	engine.Game.CurrentPlayer = &players[0]
 
-	engine.Broadcast(GameStarted)
+	engine.broadcast(GameStarted)
 }
 
 func (engine *GameEngine) getCoinsFromTable(player *models.Player, coinsAmount int) {
@@ -298,25 +295,25 @@ func (engine *GameEngine) finishCurrentMove() {
 	if currentMove.IsSuccessful() {
 		switch currentMove.Action.ActionType {
 		case models.Assasinate:
-			if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
-				engine.putCoinsOnTable(currentPlayer, models.ASSASSINATE_COINS_AMOUNT)
-				if vsPlayer.RemainingCards() == 1 {
-					engine.revealPlayerCard(vsPlayer, LastUnrevealed)
-				} else {
-					waitingReveal = true
-					currentMove.WaitingReveal = &waitingReveal
-				}
+			//if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
+			engine.putCoinsOnTable(currentPlayer, models.ASSASSINATE_COINS_AMOUNT)
+			if vsPlayer.RemainingCards() == 1 {
+				engine.revealPlayerCard(vsPlayer, LastUnrevealed)
+			} else {
+				waitingReveal = true
+				currentMove.WaitingReveal = &waitingReveal
 			}
+			//}
 		case models.Coup:
-			if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
-				engine.putCoinsOnTable(currentPlayer, models.COUP_COINS_AMOUNT)
-				if vsPlayer.RemainingCards() == 1 {
-					engine.revealPlayerCard(vsPlayer, LastUnrevealed)
-				} else {
-					waitingReveal = true
-					currentMove.WaitingReveal = &waitingReveal
-				}
+			//if currentMove.WaitingReveal == nil || !*currentMove.WaitingReveal {
+			engine.putCoinsOnTable(currentPlayer, models.COUP_COINS_AMOUNT)
+			if vsPlayer.RemainingCards() == 1 {
+				engine.revealPlayerCard(vsPlayer, LastUnrevealed)
+			} else {
+				waitingReveal = true
+				currentMove.WaitingReveal = &waitingReveal
 			}
+			//}
 		case models.Steal:
 			if vsPlayer.Coins >= 2 {
 				currentPlayer.Coins += 2
@@ -341,7 +338,8 @@ func (engine *GameEngine) finishCurrentMove() {
 		}
 	}
 
-	engine.Broadcast(ActionResult)
+	currentMove.Finished = true
+	engine.broadcast(ActionResult)
 	// We still have to wait for the assassinate/coup reveal or for exchange to happen before moving on
 	if !waitingExchange && !waitingReveal {
 		engine.nextPlayer()
@@ -357,7 +355,7 @@ func (engine *GameEngine) nextPlayer() {
 	engine.Game.CurrentPlayer = &engine.Game.Players[currentPosition]
 	engine.Game.CurrentMove = nil
 
-	engine.Broadcast(NextPlayer)
+	engine.broadcast(NextPlayer)
 }
 
 func (engine *GameEngine) solveChallenge(challengeType MessageType) {
@@ -411,9 +409,9 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	// Broadcast the challenge result
 	challenge.Success = &success
 	if challengeType == ChallengeAction {
-		engine.Broadcast(ChallenegeActionResult)
+		engine.broadcast(ChallenegeActionResult)
 	} else if challengeType == ChallengeBlock {
-		engine.Broadcast(ChallengeBlockResult)
+		engine.broadcast(ChallengeBlockResult)
 	}
 
 	// If the card was not auto-revealed, wait for the card reveal
@@ -438,7 +436,7 @@ func (engine *GameEngine) revealPlayerCard(player *models.Player, card CardType)
 		if engine.Game.RemainingPlayers == 1 {
 			// Game Over
 			engine.Game.Winner = engine.Game.GetWinner()
-			engine.Broadcast(GameOver)
+			engine.broadcast(GameOver)
 			return
 		}
 	}
@@ -452,9 +450,9 @@ func (engine *GameEngine) revealPlayerCard(player *models.Player, card CardType)
 		*currentMove.Block.Challenge.WaitingReveal = false
 	}
 
-	engine.Broadcast(RevealCard)
+	engine.broadcast(RevealCard)
 
-	if engine.Game.CurrentMove.CanCounter() {
+	if currentMove.CanCounter() {
 		// Assassinate and steal can still be blocked after
 		// an unsuccessful challenge
 		engine.waitForCounters()
