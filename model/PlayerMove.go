@@ -1,10 +1,12 @@
 package models
 
+import "log"
+
 type PlayerMove struct {
 	Action          Action     `json:"action"`
 	Finished        bool       `json:"finished"`
-	WaitingReveal   *bool      `json:"waitingReveal,omitempty"`
-	WaitingExchange *bool      `json:"waitinExchange,omitempty"`
+	WaitingReveal   bool       `json:"waitingReveal"`
+	WaitingExchange bool       `json:"waitinExchange"`
 	VsPlayer        *Player    `json:"vsPlayer,omitempty"`
 	Challenge       *Challenge `json:"challenge,omitempty"`
 	Block           *Block     `json:"blockAction,omitempty"`
@@ -44,38 +46,38 @@ func (playerMove *PlayerMove) IsSuccessful() bool {
 // Checks if the current player action or its block
 // can still be countered by a block or a challenge
 func (playerMove *PlayerMove) CanCounter() bool {
-	if !playerMove.Action.CanCounter() {
+	// The action has no counters or the move is already finished
+	if !playerMove.Action.CanCounter() || playerMove.Finished {
 		return false
 	}
 
-	if playerMove.Finished {
-		return false
+	// The action can be blocked
+	if playerMove.Action.CanBlock {
+		return playerMove.Block == nil
 	}
 
-	if playerMove.Action.CanBlock && playerMove.Block == nil {
-		return true
+	// The action ca be challlenged
+	// Note that an action that has been blocked cannot be challenged anymore
+	if playerMove.Action.CanChallenge && playerMove.Block == nil {
+		return playerMove.Challenge == nil
 	}
 
-	if playerMove.Action.CanChallenge && playerMove.Challenge == nil &&
-		// An action that has been blocked cannot be challenged anymore
-		playerMove.Block == nil {
-		return true
-	}
-
+	// The block action can be challenged
 	if playerMove.Block != nil && playerMove.Block.Challenge == nil {
-		return true
+		return playerMove.Block.Challenge == nil
 	}
 
 	// This should never be reached
+	log.Fatal("Invalid game state while checking current move counters!")
 	return false
 }
 
 func (playerMove *PlayerMove) IsWaitingMoveReveal() bool {
-	return playerMove.WaitingReveal != nil && *playerMove.WaitingReveal
+	return playerMove.WaitingReveal
 }
 
 func (playerMove *PlayerMove) IsWaitingChallengeReveal() bool {
-	return playerMove.Challenge != nil && playerMove.Challenge.IsWaitingReveal()
+	return playerMove.Challenge != nil && playerMove.Challenge.WaitingReveal
 }
 
 func (playerMove *PlayerMove) IsWaitingBlockReveal() bool {
