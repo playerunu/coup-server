@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -66,12 +65,6 @@ func registerPlayer(player models.Player, engine *core.GameEngine) {
 		ClientUuid: player.GetConnectionUuid(),
 		Payload:    &payload,
 	})
-
-	time.Sleep(100 * time.Millisecond)
-	if len(engine.Game.Players) == core.MAX_PLAYERS {
-		// Game start message
-		<-broadcast
-	}
 }
 
 func sendPlayerMove(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
@@ -96,6 +89,12 @@ func sendActionWaitReveal(player models.Player, messageType core.MessageType, pl
 	<-broadcast
 }
 
+func sendActionWaitExchange(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
+	sendPlayerMove(player, messageType, playerMove)
+	// Action message
+	<-broadcast
+}
+
 func sendActionNoCounter(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
 	sendPlayerMove(player, messageType, playerMove)
 	// Action message
@@ -112,22 +111,8 @@ func sendAction(player models.Player, messageType core.MessageType, playerMove m
 	<-broadcast
 }
 
-func sendReveal(player models.Player, cardType core.CardType) {
-	if cardType == core.AnyUnrevealed {
-		if !player.Card1.IsRevealed {
-			cardType = core.Card1
-		} else if !player.Card2.IsRevealed {
-			cardType = core.Card2
-		} else {
-			log.Fatal("Both player cards are revealed and we are supposed to find one unrevealed card")
-		}
-	}
-
-	if cardType == core.Card1 {
-		player.Card1.Reveal()
-	} else {
-		player.Card2.Reveal()
-	}
+func sendReveal(player models.Player, cardType models.CardType) {
+	player.RevealCard(cardType)
 
 	data, _ := json.Marshal(player)
 
@@ -147,39 +132,109 @@ func sendReveal(player models.Player, cardType core.CardType) {
 	<-broadcast
 }
 
+func sendExchange(player models.Player, twoCards models.TwoCards) {
+	oldCard1 := player.Card1
+	oldCard2 := player.Card2
+
+	player.Card1 = *twoCards.Card1.ToCard()
+	player.Card2 = *twoCards.Card2.ToCard()
+
+	exchangeResult := models.ExchangeResult{
+		Player: &player,
+		NewPlayerCards: &models.TwoCards{
+			Card1: player.Card1.MarshalCard(true),
+			Card2: player.Card2.MarshalCard(true),
+		},
+		DeckCards: &models.TwoCards{
+			Card1: oldCard1.MarshalCard(true),
+			Card2: oldCard2.MarshalCard(true),
+		},
+	}
+
+	exchangeResultJson, err := json.Marshal(exchangeResult)
+	if err != nil {
+		log.Fatalln("Error while marshalling full cards details:", err)
+	}
+
+	payload, _ := json.Marshal(core.GameMessage{
+		MessageType: core.ExchangeComplete,
+		Data:        exchangeResultJson,
+	})
+
+	engine.ReadClientMessage(core.ClientMessage{
+		ClientUuid: player.GetConnectionUuid(),
+		Payload:    &payload,
+	})
+
+	// Reveal card
+	<-broadcast
+	// Next player
+	<-broadcast
+}
+
 func getNextPlayer() *models.Player {
 	return &engine.Game.Players[(engine.Game.CurrentPlayer.GamePosition+1)%core.MAX_PLAYERS]
 }
 
-func initTest() {
+func initTest(ignoreClientUpdates bool) {
 	engine, broadcast, clientUpdates = newTestEngine()
-	go func() {
-		for {
-			<-clientUpdates
-		}
-	}()
+
+	if ignoreClientUpdates {
+		go func() {
+			for {
+				<-clientUpdates
+			}
+		}()
+	}
 
 	go engine.Run()
 
 	for index := 0; index < core.MAX_PLAYERS; index++ {
 		registerPlayer(players[index], engine)
+
+		if index == core.MAX_PLAYERS-1 {
+			if !ignoreClientUpdates {
+				for index := 0; index < core.MAX_PLAYERS; index++ {
+					// Your cards
+					<-clientUpdates
+				}
+			}
+			// Game start message
+			<-broadcast
+		}
 	}
 
 	firstPlayer = engine.Game.CurrentPlayer
 	secondPlayer = getNextPlayer()
 }
 
+func readClientMessage(clientMessage interface{}) {
+	msg := <-clientUpdates
+
+	var gameMessage core.GameMessage
+
+	err := json.Unmarshal(*msg.Payload, &gameMessage)
+	if err != nil {
+		fmt.Println("Error", err)
+	}
+
+	err = json.Unmarshal(gameMessage.Data, clientMessage)
+	if err != nil {
+		fmt.Println("Error", err)
+	}
+}
+
 func TestMultipleRounds(t *testing.T) {
-	initTest()
+	initTest(true)
 
-	core.DrawInfluence(engine, firstPlayer, models.Assassin, core.Card1)
-	core.DrawInfluence(engine, firstPlayer, models.Assassin, core.Card2)
+	core.DrawInfluence(engine, firstPlayer, models.Assassin, models.Card1)
+	core.DrawInfluence(engine, firstPlayer, models.Assassin, models.Card2)
 
-	core.DrawInfluence(engine, secondPlayer, models.Ambassador, core.Card1)
-	core.DrawInfluence(engine, secondPlayer, models.Assassin, core.Card2)
+	core.DrawInfluence(engine, secondPlayer, models.Ambassador, models.Card1)
+	core.DrawInfluence(engine, secondPlayer, models.Assassin, models.Card2)
 
 	t.Run("Initial game state", func(t *testing.T) {
-		if engine.Game.TableCoins != models.TOTAL_COINS-core.MAX_PLAYERS*core.INITIAL_COINS_COUNT {
+		if engine.Game.TableCoins != models.TOTAL_COINS-core.MAX_PLAYERS*models.INITIAL_COINS_COUNT {
 			t.Errorf("Wrong intial table coins count. Expected : %d; Actual : %d", models.TOTAL_COINS, engine.Game.TableCoins)
 		}
 	})
@@ -190,8 +245,8 @@ func TestMultipleRounds(t *testing.T) {
 		}
 
 		for _, player := range engine.Game.Players {
-			if player.Coins != core.INITIAL_COINS_COUNT {
-				t.Errorf("Wrong intial coins count. Expected : %d; Actual : %d", core.INITIAL_COINS_COUNT, player.Coins)
+			if player.Coins != models.INITIAL_COINS_COUNT {
+				t.Errorf("Wrong intial coins count. Expected : %d; Actual : %d", models.INITIAL_COINS_COUNT, player.Coins)
 			}
 		}
 	})
@@ -202,9 +257,9 @@ func TestMultipleRounds(t *testing.T) {
 		}
 		sendActionNoCounter(*firstPlayer, core.Action, playerMove)
 
-		if engine.Game.TableCoins != models.TOTAL_COINS-core.INITIAL_COINS_COUNT*core.MAX_PLAYERS-1 {
+		if engine.Game.TableCoins != models.TOTAL_COINS-models.INITIAL_COINS_COUNT*core.MAX_PLAYERS-1 {
 			t.Errorf("Wrong table coins after taking one coin. Expected : %d; Actual : %d",
-				models.TOTAL_COINS-core.INITIAL_COINS_COUNT*core.MAX_PLAYERS-1,
+				models.TOTAL_COINS-models.INITIAL_COINS_COUNT*core.MAX_PLAYERS-1,
 				engine.Game.TableCoins)
 		}
 		if firstPlayer.Coins != 3 {
@@ -255,13 +310,13 @@ func TestMultipleRounds(t *testing.T) {
 				t.Error("Wrong block with duke challenge result. Expected : false; Actual : true")
 			}
 
-			sendReveal(*secondPlayer, core.AnyUnrevealed)
+			sendReveal(*secondPlayer, models.AnyUnrevealed)
 		} else {
 			if *playerMove.Block.Challenge.Success == false {
 				t.Error("Wrong block with duke challenge result. Expected : true; Actual : false")
 			}
 
-			sendReveal(*firstPlayer, core.AnyUnrevealed)
+			sendReveal(*firstPlayer, models.AnyUnrevealed)
 		}
 	})
 
@@ -285,7 +340,7 @@ func TestMultipleRounds(t *testing.T) {
 				t.Errorf("Wrong game state - it should have a winner")
 			}
 		} else {
-			sendReveal(*secondPlayer, core.AnyUnrevealed)
+			sendReveal(*secondPlayer, models.AnyUnrevealed)
 
 			if secondPlayer.RemainingCards() != 1 {
 				t.Errorf("Wrong player remaining cards. Expected: 1; Actual: %d", secondPlayer.RemainingCards())
@@ -295,7 +350,7 @@ func TestMultipleRounds(t *testing.T) {
 }
 
 func TestCoup(t *testing.T) {
-	initTest()
+	initTest(true)
 
 	for i := 0; i < 7; i++ {
 		playerMove := models.PlayerMove{
@@ -311,7 +366,7 @@ func TestCoup(t *testing.T) {
 	}
 
 	sendActionWaitReveal(*firstPlayer, core.Action, playerMove)
-	sendReveal(*secondPlayer, core.AnyUnrevealed)
+	sendReveal(*secondPlayer, models.AnyUnrevealed)
 
 	if secondPlayer.RemainingCards() != 1 {
 		t.Errorf("Wrong second player remaining cards. Expected : 1; Actual : %d", secondPlayer.RemainingCards())
@@ -323,7 +378,7 @@ func TestCoup(t *testing.T) {
 	}
 
 	sendActionWaitReveal(*secondPlayer, core.Action, playerMove)
-	sendReveal(*firstPlayer, core.AnyUnrevealed)
+	sendReveal(*firstPlayer, models.AnyUnrevealed)
 
 	if firstPlayer.RemainingCards() != 1 {
 		t.Errorf("Wrong second player remaining cards. Expected : 1; Actual : %d", firstPlayer.RemainingCards())
@@ -355,13 +410,13 @@ func TestCoup(t *testing.T) {
 
 func TestSteal(t *testing.T) {
 	var playerMove models.PlayerMove
-	initTest()
+	initTest(true)
 
-	core.DrawInfluence(engine, firstPlayer, models.Captain, core.Card1)
-	core.DrawInfluence(engine, firstPlayer, models.Contessa, core.Card2)
+	core.DrawInfluence(engine, firstPlayer, models.Captain, models.Card1)
+	core.DrawInfluence(engine, firstPlayer, models.Contessa, models.Card2)
 
-	core.DrawInfluence(engine, secondPlayer, models.Ambassador, core.Card1)
-	core.DrawInfluence(engine, secondPlayer, models.Assassin, core.Card2)
+	core.DrawInfluence(engine, secondPlayer, models.Ambassador, models.Card1)
+	core.DrawInfluence(engine, secondPlayer, models.Assassin, models.Card2)
 
 	playerMove = *models.NewPlayerMove(models.Steal, secondPlayer)
 	sendActionNoCounter(*firstPlayer, core.Action, playerMove)
@@ -428,7 +483,7 @@ func TestSteal(t *testing.T) {
 	sendActionWaitReveal(*firstPlayer, core.ChallengeBlock, playerMove)
 
 	if hasAmbassador {
-		sendReveal(*firstPlayer, core.AnyUnrevealed)
+		sendReveal(*firstPlayer, models.AnyUnrevealed)
 
 		if firstPlayer.RemainingCards() != 1 {
 			t.Errorf("Wrong remaining cards for first player. Expected : 1; Actual : %d", firstPlayer.RemainingCards())
@@ -437,7 +492,7 @@ func TestSteal(t *testing.T) {
 			t.Errorf("Wrong coins amount for second player. Expected : 2; Actual : %d", secondPlayer.Coins)
 		}
 	} else {
-		sendReveal(*secondPlayer, core.AnyUnrevealed)
+		sendReveal(*secondPlayer, models.AnyUnrevealed)
 
 		if secondPlayer.RemainingCards() != 1 {
 			t.Errorf("Wrong remaining cards for second player. Expected : 1; Actual : %d", secondPlayer.RemainingCards())
@@ -445,5 +500,38 @@ func TestSteal(t *testing.T) {
 		if secondPlayer.Coins != 0 {
 			t.Errorf("Wrong coins amount for second player. Expected : 0; Actual : %d", secondPlayer.Coins)
 		}
+	}
+}
+
+func TestExchange(t *testing.T) {
+	var playerMove models.PlayerMove
+	initTest(false)
+
+	core.DrawInfluence(engine, firstPlayer, models.Captain, models.Card1)
+	core.DrawInfluence(engine, firstPlayer, models.Contessa, models.Card2)
+
+	core.DrawInfluence(engine, secondPlayer, models.Ambassador, models.Card1)
+	core.DrawInfluence(engine, secondPlayer, models.Assassin, models.Card2)
+
+	playerMove = *models.NewPlayerMove(models.Exchange, nil)
+	sendActionWaitExchange(*firstPlayer, core.Action, playerMove)
+
+	var exchangeCards models.TwoCards
+	readClientMessage(&exchangeCards)
+
+	sendExchange(*engine.Game.CurrentPlayer, exchangeCards)
+
+	if !engine.Game.ValidateState() {
+		t.Error("Wrong game state after exchanging")
+	}
+	if firstPlayer.Card1.GetInfluence() != exchangeCards.Card1.ToCard().GetInfluence() {
+		t.Errorf("Wrong player card1 influence after echanging. Expected : %s; Actual : %s",
+			exchangeCards.Card1.Influence,
+			models.InfluenceToStr(firstPlayer.Card1.GetInfluence()))
+	}
+	if firstPlayer.Card2.GetInfluence() != exchangeCards.Card2.ToCard().GetInfluence() {
+		t.Errorf("Wrong player card1 influence after echanging. Expected : %s; Actual : %s",
+			exchangeCards.Card2.Influence,
+			models.InfluenceToStr(firstPlayer.Card2.GetInfluence()))
 	}
 }
