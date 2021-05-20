@@ -1,15 +1,17 @@
 package models
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
 )
 
-var TOTAL_COINS int = 50
-var ASSASSINATE_COINS_AMOUNT int = 3
-var COUP_COINS_AMOUNT int = 7
-var STEAL_COINS_AMOUNT int = 2
+const TOTAL_COINS int = 50
+const INITIAL_COINS_COUNT = 2
+const ASSASSINATE_COINS_AMOUNT int = 3
+const COUP_COINS_AMOUNT int = 7
+const STEAL_COINS_AMOUNT int = 2
 
 type Game struct {
 	Players          []Player    `json:"players"`
@@ -23,10 +25,9 @@ type Game struct {
 
 func NewGame() *Game {
 	game := &Game{
-		Players:     []Player{},
-		deck:        NewDeck(),
-		TableCoins:  TOTAL_COINS,
-		CurrentMove: nil,
+		Players:    []Player{},
+		deck:       NewDeck(),
+		TableCoins: TOTAL_COINS,
 	}
 
 	game.shuffleDeck()
@@ -48,11 +49,29 @@ func (game *Game) DrawCard() Card {
 	return game.DrawCards(1)[0]
 }
 
-func (game *Game) InsertCardAndDraw(card *Card) Card {
+func (game *Game) InsertCard(card *Card) {
 	game.deck = append(game.deck, *card)
 	game.shuffleDeck()
+}
+
+func (game *Game) InsertCardAndDraw(card *Card) Card {
+	game.InsertCard(card)
 
 	return game.DrawCard()
+}
+
+func (game *Game) GetCoinsFromTable(player *Player, coinsAmount int) {
+	if game.TableCoins < coinsAmount {
+		log.Fatal("Not enough coins on the table")
+	}
+
+	player.Coins += coinsAmount
+	game.TableCoins -= coinsAmount
+}
+
+func (game *Game) PutCoinsOnTable(player *Player, coinsAmount int) {
+	player.Coins -= coinsAmount
+	game.TableCoins += coinsAmount
 }
 
 func (game *Game) GetPlayerByName(playerName string) *Player {
@@ -80,6 +99,46 @@ func (game *Game) GetWinner() *Player {
 
 	log.Fatal("Invalid game state! There is only one remaining player, but all player have 0 remaining cards")
 	return nil
+}
+
+func (game *Game) ValidateState() bool {
+	totalPlayerCoins := 0
+	influencesCount := make(map[Influence]int)
+
+	for playerIdx := range game.Players {
+		player := game.Players[playerIdx]
+
+		totalPlayerCoins += player.Coins
+
+		influencesCount[player.Card1.GetInfluence()]++
+		influencesCount[player.Card2.GetInfluence()]++
+	}
+
+	for cardIdx := range game.deck {
+		card := game.deck[cardIdx]
+
+		influencesCount[card.GetInfluence()]++
+	}
+
+	totalCoins := game.TableCoins + totalPlayerCoins
+	if totalCoins != TOTAL_COINS {
+		fmt.Println("Invalid total coins amount : ", totalCoins)
+		return false
+	}
+
+	if len(influencesCount) != 5 {
+		fmt.Println("Some influences are missing completly from game")
+		return false
+	}
+
+	for influence, count := range influencesCount {
+		if count != 3 {
+			fmt.Println("There are only ", count, InfluenceToStr(influence), " cards")
+			return false
+		}
+	}
+
+	return true
 }
 
 func (game *Game) shuffleDeck() {

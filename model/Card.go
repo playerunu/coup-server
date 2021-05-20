@@ -4,17 +4,6 @@ import (
 	"encoding/json"
 )
 
-type Influence int
-
-const (
-	Duke Influence = iota
-	Captain
-	Assassin
-	Contessa
-	Ambassador
-	length
-)
-
 type Card struct {
 	influence  Influence
 	IsRevealed bool
@@ -25,7 +14,7 @@ type MarshalledCard struct {
 	IsRevealed bool   `json:"isRevealed"`
 }
 
-type YourCards struct {
+type TwoCards struct {
 	Card1 MarshalledCard `json:"card1"`
 	Card2 MarshalledCard `json:"card2"`
 }
@@ -36,18 +25,7 @@ func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
 	}
 
 	if card.IsRevealed || includeInfluence {
-		switch card.influence {
-		case Duke:
-			marshalledCard.Influence = "Duke"
-		case Captain:
-			marshalledCard.Influence = "Captain"
-		case Assassin:
-			marshalledCard.Influence = "Assassin"
-		case Contessa:
-			marshalledCard.Influence = "Contessa"
-		case Ambassador:
-			marshalledCard.Influence = "Ambassador"
-		}
+		marshalledCard.Influence = InfluenceToStr(card.influence)
 	}
 
 	return marshalledCard
@@ -65,10 +43,9 @@ func (card *Card) Reveal() {
 	card.IsRevealed = true
 }
 
-func newCard(influence Influence) *Card {
+func (marshalledCard *MarshalledCard) ToCard() *Card {
 	return &Card{
-		influence:  influence,
-		IsRevealed: false,
+		influence: StrToInfluence(marshalledCard.Influence),
 	}
 }
 
@@ -82,4 +59,11 @@ func NewDeck() []Card {
 	}
 
 	return deck
+}
+
+func newCard(influence Influence) *Card {
+	return &Card{
+		influence:  influence,
+		IsRevealed: false,
+	}
 }

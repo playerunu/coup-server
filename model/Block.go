@@ -7,5 +7,5 @@ type Block struct {
 }
 
 func (block *Block) IsWaitingReveal() bool {
-	return block.Challenge != nil && block.Challenge.IsWaitingReveal()
+	return block.Challenge != nil && block.Challenge.WaitingReveal
 }
