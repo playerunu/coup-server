@@ -93,6 +93,8 @@ func sendActionWaitExchange(player models.Player, messageType core.MessageType, 
 	sendPlayerMove(player, messageType, playerMove)
 	// Action message
 	<-broadcast
+	// Waiting exchange
+	<-broadcast
 }
 
 func sendActionNoCounter(player models.Player, messageType core.MessageType, playerMove models.PlayerMove) {
@@ -127,6 +129,8 @@ func sendReveal(player models.Player, cardType models.CardType) {
 	})
 
 	// Reveal card
+	<-broadcast
+	// Waiting reveal
 	<-broadcast
 	// Next player
 	<-broadcast
@@ -166,7 +170,7 @@ func sendExchange(player models.Player, twoCards models.TwoCards) {
 		Payload:    &payload,
 	})
 
-	// Reveal card
+	// Action result
 	<-broadcast
 	// Next player
 	<-broadcast

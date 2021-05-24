@@ -122,8 +122,8 @@ func (engine *GameEngine) onPlayerMove(message GameMessage, uuid uuid.UUID) {
 	}
 
 	game := engine.Game
-	var playerAction models.PlayerMove
-	playerAction.Action = *models.NewAction(clientAction.Action.ActionType)
+	var currentMove models.PlayerMove
+	currentMove.Action = *models.NewAction(clientAction.Action.ActionType)
 
 	switch clientAction.Action.ActionType {
 	case models.TakeOneCoin:
@@ -133,16 +133,16 @@ func (engine *GameEngine) onPlayerMove(message GameMessage, uuid uuid.UUID) {
 	case models.TakeThreeCoins:
 		engine.Game.GetCoinsFromTable(game.CurrentPlayer, 3)
 	case models.Assasinate, models.Steal, models.Coup:
-		playerAction.VsPlayer = engine.Game.GetPlayerByName(clientAction.VsPlayer.Name)
+		currentMove.VsPlayer = engine.Game.GetPlayerByName(clientAction.VsPlayer.Name)
 	case models.Exchange:
 		// This action will only be broadcasted
 		break
 	}
 
-	engine.Game.CurrentMove = &playerAction
+	engine.Game.CurrentMove = &currentMove
 	engine.broadcast(Action)
 
-	if playerAction.CanCounter() {
+	if currentMove.CanCounter() {
 		engine.waitForCounters()
 	} else {
 		engine.finishCurrentMove()
@@ -275,7 +275,7 @@ func (engine *GameEngine) sendPlayerExchangeCards(player *models.Player) {
 	}
 
 	var gameMessage = GameMessage{
-		MessageType: ExchangeDeckCards,
+		MessageType: YourExchangeCards,
 		Data:        fullCardsJson,
 	}
 
@@ -333,7 +333,6 @@ func (engine *GameEngine) finishCurrentMove() {
 		case models.Steal:
 			currentPlayer.StealFromPlayer(vsPlayer)
 		case models.Exchange:
-			engine.sendPlayerExchangeCards(currentPlayer)
 			currentMove.WaitingExchange = true
 		}
 	} else {
@@ -347,7 +346,15 @@ func (engine *GameEngine) finishCurrentMove() {
 	}
 
 	currentMove.Finished = true
-	engine.broadcast(ActionResult)
+	if currentMove.WaitingReveal {
+		engine.broadcast(WaitingReveal)
+	} else if currentMove.WaitingExchange {
+		engine.broadcast(WaitingExchange)
+		engine.sendPlayerExchangeCards(currentPlayer)
+	} else {
+		engine.broadcast(ActionResult)
+	}
+
 	// We still have to wait for the assassinate/coup reveal or for exchange to happen before moving on
 	if !currentMove.WaitingExchange && !currentMove.WaitingReveal {
 		engine.nextPlayer()
@@ -458,6 +465,6 @@ func (engine *GameEngine) revealPlayerCard(player *models.Player, cardType model
 		// an unsuccessful challenge
 		engine.waitForCounters()
 	} else {
-		engine.nextPlayer()
+		engine.finishCurrentMove()
 	}
 }
