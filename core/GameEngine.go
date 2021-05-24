@@ -424,7 +424,7 @@ func (engine *GameEngine) solveChallenge(challengeType MessageType) {
 	// Broadcast the challenge result
 	challenge.Success = &success
 	if challengeType == ChallengeAction {
-		engine.broadcast(ChallenegeActionResult)
+		engine.broadcast(ChallengeActionResult)
 	} else if challengeType == ChallengeBlock {
 		engine.broadcast(ChallengeBlockResult)
 	}
