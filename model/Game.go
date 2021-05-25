@@ -20,7 +20,7 @@ type Game struct {
 	RemainingPlayers int         `json:"remainingPlayers"`
 	Winner           *Player     `json:"winner:omitempty"`
 	CurrentPlayer    *Player     `json:"currentPlayer"`
-	CurrentMove      *PlayerMove `json:"currentPlayerAction,omitempty"`
+	CurrentMove      *PlayerMove `json:"currentMove,omitempty"`
 	TableCoins       int         `json:"tableCoins"`
 	deck             []Card
 }
