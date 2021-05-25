@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
-const TOTAL_COINS int = 50
-const INITIAL_COINS_COUNT = 2
-const ASSASSINATE_COINS_AMOUNT int = 3
-const COUP_COINS_AMOUNT int = 7
-const STEAL_COINS_AMOUNT int = 2
+const (
+	TOTAL_COINS              int = 50
+	INITIAL_COINS_COUNT      int = 2
+	ASSASSINATE_COINS_AMOUNT int = 3
+	COUP_COINS_AMOUNT        int = 7
+	STEAL_COINS_AMOUNT       int = 2
+)
 
 type Game struct {
 	Players          []Player    `json:"players"`

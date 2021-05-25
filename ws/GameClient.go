@@ -4,7 +4,6 @@ import (
 	"coup-server/core"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,26 +29,26 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-// Client is a middleman between the websocket connection and the hub.
-type Client struct {
+// GameClient is a middleman between the websocket connection and the hub.
+type GameClient struct {
 	connectionUuid uuid.UUID
-	gameServer     *GameServer
+	// gameServer     *GameSerer
 
 	// The websocket connection.
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
 	sendChannel chan []byte
+
+	unregisterChannel *chan *GameClient
+	gameEngineChannel *chan core.ClientMessage
 }
 
-// readPump pumps messages from the websocket connection to the hub.
-//
-// The application runs readPump in a per-connection goroutine. The application
-// ensures that there is at most one reader on a connection by executing all
-// reads from this goroutine.
-func (client *Client) runReader() {
+// Reads messages from the client and fowwards them to the
+// game engine
+func (client *GameClient) runReader() {
 	defer func() {
-		client.gameServer.unregisterChannel <- client
+		*client.unregisterChannel <- client
 		client.conn.Close()
 	}()
 
@@ -66,19 +65,14 @@ func (client *Client) runReader() {
 			break
 		}
 		fmt.Println(string(message))
-		client.gameServer.gameEngine.ReadClientMessage(core.ClientMessage{
+		*client.gameEngineChannel <- core.ClientMessage{
 			ClientUuid: client.connectionUuid,
 			Payload:    &message,
-		})
+		}
 	}
 }
 
-// startReader pumps messages from the hub to the websocket connection.
-//
-// A goroutine running startReader is started for each connection. Te
-// application ensures that there is at most one writer to a connection by
-// executing all writes from this goroutine.
-func (client *Client) runWriter() {
+func (client *GameClient) runWriter() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -111,28 +105,4 @@ func (client *Client) runWriter() {
 			}
 		}
 	}
-}
-
-// serveWs handles websocket requests from the peer.
-func OnWsConnect(gameServer *GameServer, w http.ResponseWriter, r *http.Request) {
-
-	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
-
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	client := &Client{
-		connectionUuid: uuid.New(),
-		gameServer:     gameServer,
-		conn:           conn,
-		sendChannel:    make(chan []byte, 256),
-	}
-	client.gameServer.registerChannel <- client
-
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
-	go client.runReader()
-	go client.runWriter()
 }

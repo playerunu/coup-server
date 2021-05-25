@@ -11,32 +11,34 @@ import (
 	"github.com/google/uuid"
 )
 
-const MAX_PLAYERS = 2
-
-const WAITING_COUNTERS_SECONDS = 1
+const (
+	WAITING_COUNTERS_SECONDS = 1
+	MAX_PLAYERS              = 2
+)
 
 type GameEngine struct {
-	Game                   *models.Game
+	Game                 *models.Game
+	ClientUpdatesChannel chan ClientMessage
+	// Notifies the server about the player join / game startedupdates
+	WsServerUpdatesChannel chan string
 	waitingCountersTimer   *time.Timer
-	clientUpdatesChannel   chan ClientMessage
 	clientsPrivateChannel  *chan ClientMessage
 	globalBroadcastChannel *chan []byte
-	quitChannel            chan bool
 }
 
 func NewGameEngine(globalBroadcastChannel *chan []byte, clientsPrivateChannel *chan ClientMessage) *GameEngine {
 	return &GameEngine{
 		Game:                   models.NewGame(),
-		clientUpdatesChannel:   make(chan ClientMessage),
+		ClientUpdatesChannel:   make(chan ClientMessage),
+		WsServerUpdatesChannel: make(chan string),
 		globalBroadcastChannel: globalBroadcastChannel,
 		clientsPrivateChannel:  clientsPrivateChannel,
-		quitChannel:            make(chan bool),
 	}
 }
 
 func (engine *GameEngine) Run() {
 	for {
-		clientMessage := <-engine.clientUpdatesChannel
+		clientMessage := <-engine.ClientUpdatesChannel
 		rawMessage := *clientMessage.Payload
 
 		var gameMessage GameMessage
@@ -60,12 +62,8 @@ func (engine *GameEngine) Run() {
 	}
 }
 
-func (engine *GameEngine) Stop() {
-	engine.quitChannel <- true
-}
-
 func (engine *GameEngine) ReadClientMessage(message ClientMessage) {
-	engine.clientUpdatesChannel <- message
+	engine.ClientUpdatesChannel <- message
 }
 
 func (engine *GameEngine) broadcast(messageType MessageType) {
@@ -234,7 +232,10 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	engine.Game.RemainingPlayers += 1
 
 	if len(engine.Game.Players) == MAX_PLAYERS {
+		engine.WsServerUpdatesChannel <- GameStarted
 		engine.startGame()
+	} else {
+		engine.WsServerUpdatesChannel <- PlayerJoined
 	}
 }
 

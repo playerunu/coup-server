@@ -8,7 +8,7 @@ import (
 // clients.
 type GameServer struct {
 	// Registered clients.
-	clients map[*Client]bool
+	clients map[*GameClient]bool
 
 	// Broadcast to all clients
 	broadcastChannel chan []byte
@@ -17,10 +17,10 @@ type GameServer struct {
 	clientsPrivateChannel chan core.ClientMessage
 
 	// Register connect requests from the clients.
-	registerChannel chan *Client
+	registerChannel chan *GameClient
 
 	// Unregister disconnect requests from clients.
-	unregisterChannel chan *Client
+	unregisterChannel chan *GameClient
 
 	gameEngine *core.GameEngine
 }
@@ -28,10 +28,10 @@ type GameServer struct {
 func NewGameServer() *GameServer {
 	var gameServer = GameServer{
 		broadcastChannel:      make(chan []byte),
-		registerChannel:       make(chan *Client),
-		unregisterChannel:     make(chan *Client),
+		registerChannel:       make(chan *GameClient),
+		unregisterChannel:     make(chan *GameClient),
 		clientsPrivateChannel: make(chan core.ClientMessage),
-		clients:               make(map[*Client]bool),
+		clients:               make(map[*GameClient]bool),
 	}
 
 	gameServer.gameEngine = core.NewGameEngine(&gameServer.broadcastChannel, &gameServer.clientsPrivateChannel)
