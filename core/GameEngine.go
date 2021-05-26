@@ -12,15 +12,14 @@ import (
 )
 
 const (
-	WAITING_COUNTERS_SECONDS = 1
+	WAITING_COUNTERS_SECONDS = 1000
 	MAX_PLAYERS              = 2
 )
 
 type GameEngine struct {
 	Game                 *models.Game
 	ClientUpdatesChannel chan ClientMessage
-	// Notifies the server about the player join / game startedupdates
-	WsServerUpdatesChannel chan string
+
 	waitingCountersTimer   *time.Timer
 	clientsPrivateChannel  *chan ClientMessage
 	globalBroadcastChannel *chan []byte
@@ -30,7 +29,6 @@ func NewGameEngine(globalBroadcastChannel *chan []byte, clientsPrivateChannel *c
 	return &GameEngine{
 		Game:                   models.NewGame(),
 		ClientUpdatesChannel:   make(chan ClientMessage),
-		WsServerUpdatesChannel: make(chan string),
 		globalBroadcastChannel: globalBroadcastChannel,
 		clientsPrivateChannel:  clientsPrivateChannel,
 	}
@@ -232,10 +230,7 @@ func (engine *GameEngine) registerPlayer(player models.Player) {
 	engine.Game.RemainingPlayers += 1
 
 	if len(engine.Game.Players) == MAX_PLAYERS {
-		engine.WsServerUpdatesChannel <- GameStarted
 		engine.startGame()
-	} else {
-		engine.WsServerUpdatesChannel <- PlayerJoined
 	}
 }
 

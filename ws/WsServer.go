@@ -1,7 +1,6 @@
 package ws
 
 import (
-	"coup-server/core"
 	"fmt"
 	"log"
 	"net/http"
@@ -59,7 +58,6 @@ func (wsServer *WsServer) OnWsConnect(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-
 	wsServer.currentGameMutex.Lock()
 
 	gameServer := wsServer.currentGame
@@ -76,8 +74,8 @@ func (wsServer *WsServer) OnWsConnect(w http.ResponseWriter, r *http.Request) {
 
 	gameServer.registerChannel <- client
 
-	confirmation := <-gameServer.gameEngine.WsServerUpdatesChannel
-	if confirmation == core.GameStarted {
+	confirmation := <-gameServer.registerConfirmationChannel
+	if confirmation {
 		wsServer.runningGames = append(wsServer.runningGames, gameServer)
 		wsServer.currentGame = newGame()
 	}

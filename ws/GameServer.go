@@ -19,6 +19,9 @@ type GameServer struct {
 	// Register connect requests from the clients.
 	registerChannel chan *GameClient
 
+	// Notifies the server about the player join / game startedupdates
+	registerConfirmationChannel chan bool
+
 	// Unregister disconnect requests from clients.
 	unregisterChannel chan *GameClient
 
@@ -27,11 +30,12 @@ type GameServer struct {
 
 func NewGameServer() *GameServer {
 	var gameServer = GameServer{
-		broadcastChannel:      make(chan []byte),
-		registerChannel:       make(chan *GameClient),
-		unregisterChannel:     make(chan *GameClient),
-		clientsPrivateChannel: make(chan core.ClientMessage),
-		clients:               make(map[*GameClient]bool),
+		broadcastChannel:            make(chan []byte),
+		registerChannel:             make(chan *GameClient),
+		registerConfirmationChannel: make(chan bool),
+		unregisterChannel:           make(chan *GameClient),
+		clientsPrivateChannel:       make(chan core.ClientMessage),
+		clients:                     make(map[*GameClient]bool),
 	}
 
 	gameServer.gameEngine = core.NewGameEngine(&gameServer.broadcastChannel, &gameServer.clientsPrivateChannel)
@@ -46,6 +50,13 @@ func (gameServer *GameServer) Run() {
 		select {
 		case client := <-gameServer.registerChannel:
 			gameServer.clients[client] = true
+			if len(gameServer.clients) == core.MAX_PLAYERS {
+				// Game sever is not full yet
+				gameServer.registerConfirmationChannel <- true
+			} else {
+				// Game server is full
+				gameServer.registerConfirmationChannel <- false
+			}
 		case client := <-gameServer.unregisterChannel:
 			if _, ok := gameServer.clients[client]; ok {
 				delete(gameServer.clients, client)
