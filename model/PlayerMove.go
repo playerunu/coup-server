@@ -9,7 +9,7 @@ type PlayerMove struct {
 	WaitingExchange bool       `json:"waitinExchange"`
 	VsPlayer        *Player    `json:"vsPlayer,omitempty"`
 	Challenge       *Challenge `json:"challenge,omitempty"`
-	Block           *Block     `json:"blockAction,omitempty"`
+	Block           *Block     `json:"block,omitempty"`
 }
 
 func NewPlayerMove(actionType ActionType, vsPlayer *Player) *PlayerMove {
