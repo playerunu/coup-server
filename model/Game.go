@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// test
 const (
 	TOTAL_COINS              int = 50
 	INITIAL_COINS_COUNT      int = 2

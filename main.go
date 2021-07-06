@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
+	// test
 	fmt.Println("Starting server")
 	wsServer := ws.NewWsServer()
 	wsServer.Run()
