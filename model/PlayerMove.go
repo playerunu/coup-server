@@ -6,7 +6,7 @@ type PlayerMove struct {
 	Action          Action     `json:"action"`
 	Finished        bool       `json:"finished"`
 	WaitingReveal   bool       `json:"waitingReveal"`
-	WaitingExchange bool       `json:"waitinExchange"`
+	WaitingExchange bool       `json:"waitingExchange"`
 	VsPlayer        *Player    `json:"vsPlayer,omitempty"`
 	Challenge       *Challenge `json:"challenge,omitempty"`
 	Block           *Block     `json:"block,omitempty"`
