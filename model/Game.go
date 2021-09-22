@@ -18,7 +18,7 @@ const (
 type Game struct {
 	Players          []Player    `json:"players"`
 	RemainingPlayers int         `json:"remainingPlayers"`
-	Winner           *Player     `json:"winner:omitempty"`
+	Winner           *Player     `json:"winner,omitempty"`
 	CurrentPlayer    *Player     `json:"currentPlayer"`
 	CurrentMove      *PlayerMove `json:"currentMove,omitempty"`
 	TableCoins       int         `json:"tableCoins"`
