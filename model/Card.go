@@ -10,8 +10,8 @@ type Card struct {
 }
 
 type MarshalledCard struct {
-	Influence  string `json:"influence,omitempty"`
-	IsRevealed bool   `json:"isRevealed"`
+	Influence  Influence `json:"influence,omitempty"`
+	IsRevealed bool      `json:"isRevealed"`
 }
 
 type TwoCards struct {
@@ -25,7 +25,7 @@ func (card *Card) MarshalCard(includeInfluence bool) MarshalledCard {
 	}
 
 	if card.IsRevealed || includeInfluence {
-		marshalledCard.Influence = InfluenceToStr(card.influence)
+		marshalledCard.Influence = card.influence
 	}
 
 	return marshalledCard
@@ -45,7 +45,7 @@ func (card *Card) Reveal() {
 
 func (marshalledCard *MarshalledCard) ToCard() *Card {
 	return &Card{
-		influence: StrToInfluence(marshalledCard.Influence),
+		influence: marshalledCard.Influence,
 	}
 }
 

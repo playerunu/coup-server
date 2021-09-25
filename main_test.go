@@ -530,12 +530,12 @@ func TestExchange(t *testing.T) {
 	}
 	if firstPlayer.Card1.GetInfluence() != exchangeCards.Card1.ToCard().GetInfluence() {
 		t.Errorf("Wrong player card1 influence after echanging. Expected : %s; Actual : %s",
-			exchangeCards.Card1.Influence,
+			models.InfluenceToStr(exchangeCards.Card1.Influence),
 			models.InfluenceToStr(firstPlayer.Card1.GetInfluence()))
 	}
 	if firstPlayer.Card2.GetInfluence() != exchangeCards.Card2.ToCard().GetInfluence() {
 		t.Errorf("Wrong player card1 influence after echanging. Expected : %s; Actual : %s",
-			exchangeCards.Card2.Influence,
+			models.InfluenceToStr(exchangeCards.Card2.Influence),
 			models.InfluenceToStr(firstPlayer.Card2.GetInfluence()))
 	}
 }
