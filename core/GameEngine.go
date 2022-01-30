@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	WAITING_COUNTERS_SECONDS = 1000
+	WAITING_COUNTERS_SECONDS = 6
 	MAX_PLAYERS              = 2
 )
 
@@ -329,7 +329,7 @@ func (engine *GameEngine) finishCurrentMove() {
 		case models.Steal:
 			currentPlayer.StealFromPlayer(vsPlayer)
 		case models.Exchange:
-			currentMove.WaitingExchange = true
+			currentMove.WaitingExchange = false
 		}
 	} else {
 		// Some actions need to rollback when they are blocked/challenged
@@ -338,10 +338,13 @@ func (engine *GameEngine) finishCurrentMove() {
 			engine.Game.PutCoinsOnTable(currentPlayer, 2)
 		case models.TakeThreeCoins:
 			engine.Game.PutCoinsOnTable(currentPlayer, 3)
+		case models.Exchange:
+			currentMove.WaitingExchange = false
 		}
 	}
 
 	currentMove.Finished = true
+	// Check if we still have to wait for the assassinate/coup reveal or for exchange to happen before moving on
 	if currentMove.WaitingReveal {
 		engine.broadcast(WaitingReveal)
 	} else if currentMove.WaitingExchange {
@@ -349,10 +352,6 @@ func (engine *GameEngine) finishCurrentMove() {
 		engine.sendPlayerExchangeCards(currentPlayer)
 	} else {
 		engine.broadcast(ActionResult)
-	}
-
-	// We still have to wait for the assassinate/coup reveal or for exchange to happen before moving on
-	if !currentMove.WaitingExchange && !currentMove.WaitingReveal {
 		engine.nextPlayer()
 	}
 }
