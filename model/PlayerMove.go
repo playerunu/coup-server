@@ -27,7 +27,7 @@ func (playerMove *PlayerMove) IsSuccessful() bool {
 
 	if playerMove.Challenge != nil {
 		// The action was challenged, return the challenge result
-		return *playerMove.Challenge.Success
+		return !*playerMove.Challenge.Success
 	}
 
 	if playerMove.Block != nil {
