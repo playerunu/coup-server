@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	WAITING_COUNTERS_SECONDS = 6
+	WAITING_COUNTERS_SECONDS = 5
 	MAX_PLAYERS              = 2
 )
 
@@ -329,7 +329,7 @@ func (engine *GameEngine) finishCurrentMove() {
 		case models.Steal:
 			currentPlayer.StealFromPlayer(vsPlayer)
 		case models.Exchange:
-			currentMove.WaitingExchange = false
+			currentMove.WaitingExchange = true
 		}
 	} else {
 		// Some actions need to rollback when they are blocked/challenged
