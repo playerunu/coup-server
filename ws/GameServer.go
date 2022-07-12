@@ -2,13 +2,15 @@ package ws
 
 import (
 	"coup-server/core"
+
+	"github.com/google/uuid"
 )
 
 // GameServer maintains the set of active clients and broadcasts messages to the
 // clients.
 type GameServer struct {
 	// Registered clients.
-	clients map[*GameClient]bool
+	clients map[uuid.UUID]*GameClient
 
 	// Broadcast to all clients
 	broadcastChannel chan []byte
@@ -35,7 +37,7 @@ func NewGameServer() *GameServer {
 		registerConfirmationChannel: make(chan bool),
 		unregisterChannel:           make(chan *GameClient),
 		clientsPrivateChannel:       make(chan core.ClientMessage),
-		clients:                     make(map[*GameClient]bool),
+		clients:                     make(map[uuid.UUID]*GameClient),
 	}
 
 	gameServer.gameEngine = core.NewGameEngine(&gameServer.broadcastChannel, &gameServer.clientsPrivateChannel)
@@ -49,7 +51,7 @@ func (gameServer *GameServer) Run() {
 	for {
 		select {
 		case client := <-gameServer.registerChannel:
-			gameServer.clients[client] = true
+			gameServer.clients[client.connectionUuid] = client
 			if len(gameServer.clients) == core.MAX_PLAYERS {
 				// Game sever is not full yet
 				gameServer.registerConfirmationChannel <- true
@@ -57,23 +59,18 @@ func (gameServer *GameServer) Run() {
 				// Game server is full
 				gameServer.registerConfirmationChannel <- false
 			}
-		case client := <-gameServer.unregisterChannel:
-			if _, ok := gameServer.clients[client]; ok {
-				delete(gameServer.clients, client)
-				close(client.sendChannel)
-			}
 		case message := <-gameServer.broadcastChannel:
-			for client := range gameServer.clients {
+			for uuid, client := range gameServer.clients {
 				select {
 				case client.sendChannel <- message:
 				default:
 					close(client.sendChannel)
-					delete(gameServer.clients, client)
+					delete(gameServer.clients, uuid)
 				}
 			}
 		case message := <-gameServer.clientsPrivateChannel:
-			for client := range gameServer.clients {
-				if client.connectionUuid == message.ClientUuid {
+			for uuid, client := range gameServer.clients {
+				if uuid == message.ClientUuid {
 					client.sendChannel <- *message.Payload
 					break
 				}
